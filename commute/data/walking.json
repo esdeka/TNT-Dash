@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "applyTo": "homeAtEitherEnd",
+  "originLabel": "Home · Parkdreef",
+  "boardingBufferMinutes": 0,
+  "source": "User walking estimates: Home to boarding stop towards BN, and the same durations from the alighting stop back home when returning. From TNT (already at a stop), no walking is added. Original three pins are user-provided; Thurn en Taxis locations are operator GTFS.",
+  "profiles": {
+    "picard": {
+      "name": "Brussel Picard",
+      "minutes": 5,
+      "lat": 50.86404643162095,
+      "lon": 4.343968608510816,
+      "scope": "Picard boarding stops towards Brussels North",
+      "note": "Five-minute walk from home to the supplied Picard reference pin. Individual bus boarding coordinates remain those of the operator."
+    },
+    "shuttle": {
+      "name": "TNT shuttle stop",
+      "minutes": 5,
+      "lat": 50.86394437949276,
+      "lon": 4.346459999157837,
+      "scope": "Tour & Taxis staff-shuttle stop",
+      "note": "Five-minute walk from home. This is the shuttle stop pin supplied by the user; the BN shuttle bay remains unspecified."
+    },
+    "suzan": {
+      "name": "Suzan Daniel · Picard street",
+      "minutes": 8,
+      "lat": 50.863076897694725,
+      "lon": 4.346976807605478,
+      "scope": "All nearby Suzan Daniel platforms, including De Lijn, as approved by the user",
+      "note": "The supplied reference pin is on Picard street. By user confirmation, the 8-minute walk is used as an area estimate for all nearby Suzan Daniel platforms. Each bus still uses its own actual boarding coordinates."
+    },
+    "thurn": {
+      "name": "Thurn en Taxis · STIB 88",
+      "minutes": 11,
+      "operator": "stib",
+      "coordinateSource": "operator-gtfs",
+      "scope": "Thurn en Taxis bus stop towards Brussels North",
+      "note": "Eleven-minute walk from home, supplied by the user. This is the STIB bus stop, not the Tour-et-Taxis railway station or the TNT staff-shuttle stop. No personal reference pin was supplied; use the actual STIB boarding coordinates in the trip details."
+    }
+  }
+}

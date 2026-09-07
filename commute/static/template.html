@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#eaf1fa"><title>Commute · TNT ↔ BN</title><style>/*__STYLES__*/</style></head>
+<body data-direction="toBN">
+<a class="skip-link" href="#departures">Skip to departures</a>
+<header class="glance-header"><div class="direction-tabs" aria-label="Travel direction"><button data-action="direction" data-direction="toBN" id="to-bn" aria-pressed="true">To BN <span data-icon="arrow-right"></span></button><button data-action="direction" data-direction="toTNT" id="to-home" aria-pressed="false">To TNT <span data-icon="walking"></span></button></div><span id="local-clock" class="local-clock"></span><button class="reference-button" data-action="modal" data-tab="method" aria-label="Reference and settings"><span data-icon="info"></span><span>Reference</span></button></header>
+<main class="glance-main">
+ <div id="result-context" class="glance-context"></div>
+ <section id="recommendation" class="glance-result" aria-label="Recommended departure" aria-live="polite"></section>
+ <div class="live-bar"><span id="live-status" role="status"></span><button id="refresh-button" data-action="refresh" aria-label="Refresh live data"><span data-icon="refresh"></span><span id="refresh-label">Refresh</span></button></div>
+ <details id="planner" class="trip-controls"><summary><span id="planner-summary">Now · from home</span><span class="control-hint">Change <span data-icon="chevron-down"></span></span></summary><div class="control-body">
+  <div id="start-controls" class="start-controls"><span>Start</span><div class="segmented"><button data-action="start" data-start="home" id="start-home">Home</button><button data-action="start" data-start="tnt" id="start-tnt">TNT stop</button></div></div>
+  <div class="segmented mode-controls"><button data-action="mode" data-mode="now" id="now-button">Now</button><button data-action="mode" data-mode="plan" id="plan-button">Plan</button><button data-action="mode" data-mode="train" id="train-button">Catch a train</button></div>
+  <div id="plan-fields" class="plan-fields" hidden><label>Date<input type="date" id="plan-date"></label><label id="plan-time-label">Leave after<input type="time" id="plan-time"></label><button data-action="quick-plan" data-hour="08:00" class="small-button">Next workday 08:00</button><span id="plan-error" role="alert"></span></div>
+      <section class="train-fields" id="train-fields" hidden aria-label="Choose a train departing Brussels North">
+        <div class="train-fields-heading"><h2>Train departing Brussels North</h2><span>Arrive early enough to transfer and board</span></div>
+        <div class="train-input-row">
+          <label>Date<input type="date" id="train-date" required></label>
+          <label>Trains after<input type="time" id="train-board-time" required></label>
+          <label>Station margin (min)<input type="number" min="0" max="60" step="1" id="train-margin" value="5"></label>
+          <button class="small-button train-load" id="load-trains" data-action="load-trains">Load train departures</button>
+        </div>
+        <p class="train-source-note">iRail / SNCB-NMBS information. Planning uses the scheduled train departure, not a delay estimate.</p>
+        <div id="train-board-status" role="status"></div>
+        <label class="train-filter" id="train-filter-label" hidden>Filter by destination or train<input id="train-filter" type="search" placeholder="Destination or train number" autocomplete="off"></label>
+        <div id="train-board" class="train-board"></div>
+        <div class="manual-train"><label>Or enter a train time manually<input type="time" id="manual-train-time" aria-label="Manual train departure time"></label><button class="small-button" data-action="manual-train">Use this time</button><span>No train service is verified for a manually entered time.</span></div>
+        <div id="selected-train" class="selected-train" hidden></div>
+      </section>
+
+  <div class="filter-controls"><label>Operator<select id="operator-select"><option value="all">All operators</option><option value="shuttle">Shuttle</option><option value="delijn">De Lijn</option><option value="stib">MIVB / STIB</option></select></label><label>Stop<select id="stop-select"><option value="all">Preferred stops</option><option value="picard">Picard</option><option value="suzan">Suzan Daniel</option><option value="thurn">Thurn en Taxis</option><option value="shuttle">Shuttle</option></select></label><label>Window<select id="horizon"><option value="60">Next hour</option><option value="120" selected>Next 2 hours</option><option value="240">Next 4 hours</option></select></label><label>Sort<select id="sort"><option value="arrival">Earliest arrival</option><option value="departure">Bus departure</option><option value="latestStart" id="latest-start-sort" hidden>Latest start for train</option></select></label></div>
+  <label class="compact-check"><input type="checkbox" id="include-shuttle" checked> Include staff shuttle</label>
+  <p id="scope-note" class="scope-note"></p><button data-action="modal" data-tab="walking" class="text-button">Walking times & stops</button>
+ </div></details>
+ <div id="coverage-notice" class="notice" hidden></div>
+ <section id="departures" class="glance-departures" aria-labelledby="departures-heading"><div class="list-heading"><h1 id="departures-heading">Other departures</h1><span id="departure-count"></span></div><div id="departure-rows" role="list"></div><div id="empty-state" hidden></div><button id="show-more" data-action="more" class="more-button" hidden>More departures</button></section>
+ <footer class="glance-footer"><button data-action="modal" data-tab="sources">Data sources</button><button data-action="modal" data-tab="shuttle">Shuttle timetable</button><button data-action="modal" data-tab="technical">API & HA</button></footer>
+</main>
+<dialog id="details-dialog" aria-labelledby="dialog-title"><div class="dialog-shell"><div class="dialog-header"><div><span class="eyebrow" id="dialog-eyebrow">REFERENCE</span><h2 id="dialog-title">Details</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close dialog"><span data-icon="close"></span></button></div><div id="dialog-tabs" class="dialog-tabs"></div><div id="dialog-content" class="dialog-content"></div></div></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script>window.COMMUTE_SERVER = false;</script>
+<script type="application/json" id="timetable-data">/*__TIMETABLE__*/</script><script type="application/json" id="walking-data">/*__WALKING__*/</script><script type="application/json" id="operator-logos">/*__LOGOS__*/</script><script type="application/json" id="pdf-data">/*__PDF__*/</script>
+<script>/*__ENGINE__*/</script><script>/*__REFERENCE__*/</script><script>/*__APP__*/</script>
+</body></html>

@@ -1,0 +1,243 @@
+# Home Assistant package. Place in /config/packages/commute.yaml.
+# Add the two URLs from secrets.example.yaml to your own /config/secrets.yaml.
+# GET /api/next is read-only and NEVER refreshes the upstream operator feeds.
+rest:
+  - resource: !secret commute_next_url
+    scan_interval: 60
+    timeout: 15
+    sensor:
+      - name: Commute data
+        unique_id: tnt_bn_commute_data
+        value_template: "{{ value_json.get('generated_at', 'unavailable') if value_json is mapping else 'unavailable' }}"
+        json_attributes:
+          - recommendation
+          - next_by_operator
+          - best_by_operator
+          - providers
+          - access
+          - timetable_coverage
+          - walking_included
+          - window_minutes
+          - count
+
+template:
+  - sensor:
+      - name: "Commute next shuttle leave home"
+        unique_id: tnt_bn_next_shuttle_leave_home_at
+        device_class: timestamp
+        availability: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+          {{ has_value('sensor.commute_data') and row.get('leave_home_at') is not none }}
+        state: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+          {{ row.get('leave_home_at') or none }}
+        attributes:
+          line: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('line') }}
+          stop: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ (row.get('origin') or {}).get('name') }}
+          bus_departure: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('departure') }}
+          bn_arrival: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('arrival') }}
+          walk_minutes: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('walk_minutes') }}
+          data_quality: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('quality') }}
+          staff_only: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('staff_only', false) }}
+      - name: "Commute next shuttle departure"
+        unique_id: tnt_bn_next_shuttle_departure
+        device_class: timestamp
+        availability: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+          {{ has_value('sensor.commute_data') and row.get('departure') is not none }}
+        state: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+          {{ row.get('departure') or none }}
+        attributes:
+          line: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('line') }}
+          stop: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ (row.get('origin') or {}).get('name') }}
+          bus_departure: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('departure') }}
+          bn_arrival: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('arrival') }}
+          walk_minutes: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('walk_minutes') }}
+          data_quality: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('quality') }}
+          staff_only: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('shuttle') or {} -%}
+            {{ row.get('staff_only', false) }}
+      - name: "Commute next STIB leave home"
+        unique_id: tnt_bn_next_stib_leave_home_at
+        device_class: timestamp
+        availability: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+          {{ has_value('sensor.commute_data') and row.get('leave_home_at') is not none }}
+        state: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+          {{ row.get('leave_home_at') or none }}
+        attributes:
+          line: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('line') }}
+          stop: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ (row.get('origin') or {}).get('name') }}
+          bus_departure: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('departure') }}
+          bn_arrival: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('arrival') }}
+          walk_minutes: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('walk_minutes') }}
+          data_quality: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('quality') }}
+          staff_only: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('staff_only', false) }}
+      - name: "Commute next STIB departure"
+        unique_id: tnt_bn_next_stib_departure
+        device_class: timestamp
+        availability: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+          {{ has_value('sensor.commute_data') and row.get('departure') is not none }}
+        state: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+          {{ row.get('departure') or none }}
+        attributes:
+          line: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('line') }}
+          stop: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ (row.get('origin') or {}).get('name') }}
+          bus_departure: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('departure') }}
+          bn_arrival: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('arrival') }}
+          walk_minutes: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('walk_minutes') }}
+          data_quality: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('quality') }}
+          staff_only: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('stib') or {} -%}
+            {{ row.get('staff_only', false) }}
+      - name: "Commute next De Lijn leave home"
+        unique_id: tnt_bn_next_delijn_leave_home_at
+        device_class: timestamp
+        availability: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+          {{ has_value('sensor.commute_data') and row.get('leave_home_at') is not none }}
+        state: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+          {{ row.get('leave_home_at') or none }}
+        attributes:
+          line: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('line') }}
+          stop: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ (row.get('origin') or {}).get('name') }}
+          bus_departure: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('departure') }}
+          bn_arrival: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('arrival') }}
+          walk_minutes: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('walk_minutes') }}
+          data_quality: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('quality') }}
+          staff_only: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('staff_only', false) }}
+      - name: "Commute next De Lijn departure"
+        unique_id: tnt_bn_next_delijn_departure
+        device_class: timestamp
+        availability: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+          {{ has_value('sensor.commute_data') and row.get('departure') is not none }}
+        state: >-
+          {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+          {{ row.get('departure') or none }}
+        attributes:
+          line: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('line') }}
+          stop: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ (row.get('origin') or {}).get('name') }}
+          bus_departure: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('departure') }}
+          bn_arrival: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('arrival') }}
+          walk_minutes: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('walk_minutes') }}
+          data_quality: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('quality') }}
+          staff_only: >-
+            {%- set row = (state_attr('sensor.commute_data', 'next_by_operator') or {}).get('delijn') or {} -%}
+            {{ row.get('staff_only', false) }}
+      - name: Commute recommended leave home
+        unique_id: tnt_bn_recommended_leave_home
+        device_class: timestamp
+        availability: >-
+          {%- set row = state_attr('sensor.commute_data', 'recommendation') or {} -%}
+          {{ has_value('sensor.commute_data') and row.get('leave_home_at') is not none }}
+        state: >-
+          {%- set row = state_attr('sensor.commute_data', 'recommendation') or {} -%}
+          {{ row.get('leave_home_at') or none }}
+        attributes:
+          operator: "{{ (state_attr('sensor.commute_data', 'recommendation') or {}).get('operator') }}"
+          line: "{{ (state_attr('sensor.commute_data', 'recommendation') or {}).get('line') }}"
+          bus_departure: "{{ (state_attr('sensor.commute_data', 'recommendation') or {}).get('departure') }}"
+          bn_arrival: "{{ (state_attr('sensor.commute_data', 'recommendation') or {}).get('arrival') }}"
+          data_quality: "{{ (state_attr('sensor.commute_data', 'recommendation') or {}).get('quality') }}"
+
+# This defines an explicit action; it does not schedule any polling.
+rest_command:
+  commute_refresh_live:
+    url: !secret commute_live_refresh_url
+    method: POST
+    headers:
+      X-Commute-Refresh: manual
+    timeout: 30
+
+  # An automation must use this action, not masquerade as a manual button press.
+  # The server will return cache only when no private BMC key is configured.
+  commute_auto_refresh_live:
+    url: !secret commute_live_refresh_url
+    method: POST
+    headers:
+      X-Commute-Refresh: automatic
+    timeout: 30

@@ -1,0 +1,29 @@
+name: Commute dashboard
+version: 1.4.1
+slug: commute_dashboard
+description: Personal TNT–Brussels North commute planner and departure entities API
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+ports:
+  3000/tcp: 3000
+ports_description:
+  3000/tcp: Dashboard and read-only departures API; trusted LAN only
+webui: http://[HOST]:[PORT:3000]
+options:
+  refresh_schedules_on_start: false
+  bmc_api_key: ""
+  delijn_api_key: ""
+  delijn_daily_limit: 10000
+  bmc_auth_daily_limit: 10000
+  bmc_auth_base: ""
+schema:
+  refresh_schedules_on_start: bool
+  bmc_api_key: password
+  delijn_api_key: password
+  delijn_daily_limit: int(1,864000)
+  bmc_auth_daily_limit: int(2,12000)
+  bmc_auth_base: str

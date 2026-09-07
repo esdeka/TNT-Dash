@@ -1,0 +1,3 @@
+# Optional HA YAML/template checks; not needed by the running dashboard.
+PyYAML>=6.0
+Jinja2>=3.1

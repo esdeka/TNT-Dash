@@ -1,0 +1,29 @@
+# Requires a private BMC API key configured in the app. Anonymous auto checks are blocked.
+# Optional example, NOT enabled by the sensor package. Review the hours yourself.
+# At most ~26 refreshes / weekday (52 upstream calls), plus manual use.
+# The server still enforces its 80-call rolling-day cap. Each refresh costs 2.
+# Initial state is disabled. Only enable this if you want scheduled live API calls.
+automation:
+  - id: commute_optional_live_windows
+    alias: "Commute: optional live refresh during travel windows"
+    initial_state: false
+    triggers:
+      - trigger: time_pattern
+        minutes: "/10"
+    conditions:
+      - condition: time
+        weekday: [mon, tue, wed, thu, fri]
+      - condition: or
+        conditions:
+          - condition: time
+            after: "07:00:00"
+            before: "09:00:00"
+          - condition: time
+            after: "16:00:00"
+            before: "18:00:00"
+    actions:
+      - action: rest_command.commute_auto_refresh_live
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.commute_data
+    mode: single

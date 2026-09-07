@@ -1,0 +1,3 @@
+# The app and timetable importer otherwise use Python's standard library.
+# Optional fallback if the live portal delivers binary GTFS-RT instead of JSON:
+gtfs-realtime-bindings>=1.0.0
