@@ -117,7 +117,7 @@ This is a checked dated example, not an assurance that the same train/platform/c
 
 ## What the automated suites cover
 
-Existing bus/shuttle behavior: direction changes, morning +8-minute return rule, anchored peak grid, end clipping, duplicate overlap removal, user-confirmed lunch, the two exact Rogier estimates, no invented afternoon reverse / 22:00 service, weekday/holiday/year restrictions, calendars and date exceptions, post-midnight GTFS, direct stop order, operator/stop filters, eligibility and pagination.
+Existing bus/shuttle behavior: direction changes, morning +7-minute return rule (7-minute ride both ways), anchored 8-minute peak grid, end clipping, duplicate overlap removal, user-confirmed lunch with Rogier 3 minutes after BN for every trip, lunch/afternoon BN returns 7 minutes after the TNT start, confirmed last trips TNT 22:00 / BN 22:07, weekday/holiday/year restrictions, calendars and date exceptions, post-midnight GTFS, direct stop order, operator/stop filters, eligibility and pagination.
 
 Walking: exact 5/5/8-minute profiles and pins, all approved Suzan Daniel platforms, unchanged actual bus coordinates, reachable-only filtering, exact cut-offs, leave-home timestamps, no double-counting, no reverse walk, missing-walk safety, live delay applied before walking eligibility.
 

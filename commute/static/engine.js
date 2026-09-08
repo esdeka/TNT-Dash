@@ -199,6 +199,21 @@
     if (operator === 'delijn' && /^https?:\/\//i.test(route.url || '')) return route.url;
     return null;
   }
+  // Public live-departure page of a single stop, next to the route links.
+  // De Lijn halte URLs come from GTFS; STIB uses its real-time stop page.
+  function stopPage(operator, stop = {}) {
+    if (operator === 'delijn' && /^https?:\/\//i.test(stop.url || '')) return stop.url;
+    if (operator === 'stib' && stop.code) return 'https://www.stib-mivb.be/startpagina/reizen/real-time/haltes?stop=' + encodeURIComponent(stop.code);
+    return null;
+  }
+  // Delays display in whole minutes: a seconds remainder under 45 s rounds
+  // down to the previous minute, otherwise up. Colour follows that displayed
+  // minute so tone and text can never disagree: blue early, green 0–2 min,
+  // orange over 2 and under 5 min, red 5 min or more.
+  function roundMinuteDelta(seconds) {
+    const a = Math.abs(Math.round(seconds));
+    return Math.sign(seconds) * (a % 60 < 45 ? Math.floor(a / 60) : Math.ceil(a / 60)) * 60;
+  }
   function timingStatus(row, event = 'departure') {
     const arrival = event === 'arrival', actual = arrival ? row.arrival : row.departure;
     const original = arrival ? row.scheduledArrival : row.scheduledDeparture;
@@ -206,8 +221,8 @@
     const known = row.quality === 'live' && Number.isFinite(original) && Number.isFinite(actual);
     const rawDelta = known ? actual - original : null;
     const estimated = Boolean(row.delayEstimated || arrival && row.arrivalDelayEstimated);
-    const delta = row.delayEstimated && rawDelta!==null ? Math.sign(rawDelta)*Math.round(Math.abs(rawDelta)/60)*60 : rawDelta;
-    const tone = delta === null ? 'unknown' : delta < 0 ? 'early' : delta === 0 ? 'on-time' : delta < 180 ? 'minor-delay' : 'major-delay';
+    const delta = rawDelta === null ? null : roundMinuteDelta(rawDelta);
+    const tone = delta === null ? 'unknown' : delta < 0 ? 'early' : delta <= 120 ? 'on-time' : delta < 300 ? 'minor-delay' : 'major-delay';
     return {actual, original: known ? original : null, delta, rawDelta, tone, estimated,
       approximate: arrival ? Boolean(row.arrivalApprox) : Boolean(row.delayEstimated) || row.quality === 'live' && !known};
   }
@@ -237,6 +252,7 @@
           const row = { id: `${op}-${iso}-${tid}-${from}-${to}`, operator: op, tripId: tid,
             serviceDate: iso, line: data.routes[rid].line, routeId: rid, headsign,
             routePageUrl: operatorPage(op, data.routes[rid].line, data.routes[rid], headsign),
+            stopPageUrl: stopPage(op, a),
             origin: { id: from, ...a }, destination: { id: to, ...b },
             originSequence: fromSeq, destinationSequence: toSeq,
             departure, departureLatest: departure, arrival, arrivalLatest: arrival,
@@ -266,9 +282,9 @@
   const MORNING = ['05:30', '05:40', '05:50', '06:00', '06:10', '06:20', '06:30', '06:40', '06:50', '07:00',
     '09:35', '09:45', '09:55', '10:05', '10:20', '10:35', '10:50', '11:05', '11:20', '11:30', '11:40', '11:50'];
   const AFTERNOON = ['14:05', '14:15', '14:30', '14:45', '15:00', '15:10', '15:20', '15:30', '15:37', '15:44', '15:53', '15:58',
-    '18:40', '18:50', '19:05', '19:15', '19:30', '19:45', '20:00', '20:20', '20:40', '21:00', '21:20', '21:40'];
-  // User-approved assumption: an anchored eight-minute grid, clipped to the
-  // PDF's peak windows. Do not reset the grid at each clock hour.
+    '18:40', '18:50', '19:05', '19:15', '19:30', '19:45', '20:00', '20:20', '20:40', '21:00', '21:20', '21:40', '22:00'];
+  // User-approved assumption: an anchored eight-minute headway grid, clipped
+  // to the PDF's peak windows. Do not reset the grid at each clock hour.
   function peakTimes(start, finish) {
     const minutes = t => t.split(':').map(Number).reduce((h, m) => h * 60 + m);
     const times = [];
@@ -277,11 +293,10 @@
   }
   const MORNING_PEAK = peakTimes('07:00', '09:30');
   const AFTERNOON_PEAK = peakTimes('16:00', '18:30');
-  // First lunchtime row confirmed by the user as TNT departures.
+  // Lunchtime row confirmed by the user as TNT departures.
   const LUNCH = ['12:05', '12:20', '12:35', '12:50', '13:05', '13:20', '13:35', '13:50'];
-  // Preserve the two supplied estimates exactly. They imply different offsets,
-  // so later Rogier times are deliberately left unspecified.
-  const ROGIER_ESTIMATES = { '12:05': '12:16', '12:20': '12:32' };
+  const RIDE_SECONDS = 7 * 60; // user assumption from 2026-09-07: TNT ↔ BN is 7 minutes
+  const ROGIER_EXTRA_SECONDS = 3 * 60; // lunch trips continue: BN + 3 minutes
   function shuttleRows(reference, direction, horizon = 120) {
     const end = reference + horizon * 60, result = [], seen = new Set();
     for (let iso = dateISO(reference); iso <= dateISO(end); iso = shiftDate(iso, 1)) {
@@ -299,37 +314,43 @@
         let detail;
         if (assumedPeak) {
           detail = 'Exact departure generated from your assumed eight-minute peak grid, not an exact time published in the PDF and not live-tracked. ' +
-            (shift ? 'The morning grid starts at 07:00 from BN; TNT departures use that grid plus 8 minutes. ' :
+            (shift ? (reverse ? 'The morning grid starts at 07:00 from BN; TNT departures use that grid plus 7 minutes. ' :
+              'BN departures use that grid plus 7 minutes, after the listed TNT start. ') :
               reverse ? 'The afternoon TNT grid starts at 16:00. ' : 'The morning BN grid starts at 07:00. ') +
-            'Arrival adds your 8-minute ride estimate. Traffic or irregular operation can change both times.';
+            'Arrival adds your 7-minute ride estimate. Traffic or irregular operation can change both times.';
         } else if (lunch) {
-          detail = 'You confirmed that the lunchtime row starts at TNT. This is a TNT departure, with BN arrival assumed 8 minutes later. ' +
-            'The shuttle continues towards Rogier; the BN arrival is not a BN-to-TNT departure. Not live-tracked.';
+          detail = 'You confirmed the lunchtime row starts at TNT (12:05–13:50). BN is 7 minutes after the TNT departure and Rogier 3 minutes after BN, both from your assumptions. Not live-tracked.';
         } else if (shift) {
-          detail = 'Morning TNT departure = listed BN departure + 8 minutes, using your return-trip rule. Not live-tracked. Ride time: 8 minutes, supplied by you.';
+          detail = (reverse ? 'Morning TNT departure = listed BN departure + 7 minutes, using your return-trip rule. ' :
+            'Lunch/afternoon BN departure = listed TNT start + 7 minutes, using your return-trip rule. ') +
+            'Not live-tracked. Ride time: 7 minutes, supplied by you.';
         } else {
-          detail = 'Departure transcribed from the 2026 shuttle PDF. The 8-minute ride is supplied by you; arrival is approximate. Staff-only service.';
+          detail = 'Departure transcribed from the 2026 shuttle PDF. The 7-minute ride is supplied by you; arrival is approximate. Staff-only service.';
         }
         result.push({ id, operator: 'shuttle', line: 'T&T', origin, destination,
           headsign: lunch ? 'Rogier (via Brussels North)' : reverse ? 'Brussels North' : 'Tour & Taxis',
           serviceDate: iso, departure, departureLatest: departure,
-          arrival: departure + 480, arrivalLatest: departure + 480,
-          ride: 480, baseDeparture, publishedDeparture: assumedPeak ? null : baseDeparture,
+          arrival: departure + RIDE_SECONDS, arrivalLatest: departure + RIDE_SECONDS,
+          ride: RIDE_SECONDS, baseDeparture, publishedDeparture: assumedPeak ? null : baseDeparture,
           quality, assumedPeak, lunch, returnOffset: shift,
-          rogierArrival: lunch && ROGIER_ESTIMATES[clock] ? wallEpoch(iso, ROGIER_ESTIMATES[clock]) : null,
+          rogierArrival: lunch ? departure + RIDE_SECONDS + ROGIER_EXTRA_SECONDS : null,
           arrivalApprox: true, staffOnly: true, detail });
       }
-      // Add published points first so 07:00 (and its 07:08 TNT return) does not
+      // Add published points first so 07:00 (and its 07:07 TNT return) does not
       // appear twice where the PDF's fixed list overlaps the assumed peak grid.
-      MORNING.forEach(t => fixed(t, reverse ? 8 : 0));
-      MORNING_PEAK.forEach(t => fixed(t, reverse ? 8 : 0, { assumedPeak: true }));
+      MORNING.forEach(t => fixed(t, reverse ? 7 : 0));
+      MORNING_PEAK.forEach(t => fixed(t, reverse ? 7 : 0, { assumedPeak: true }));
       if (reverse) {
         LUNCH.forEach(t => fixed(t, 0, { lunch: true }));
         AFTERNOON.forEach(t => fixed(t));
         AFTERNOON_PEAK.forEach(t => fixed(t, 0, { assumedPeak: true }));
+      } else {
+        // Your +7 rule: lunch and afternoon BN returns leave BN 7 minutes after
+        // the TNT start (lunch 12:12–13:57, afternoon 14:12 … 22:07).
+        LUNCH.forEach(t => fixed(t, 7));
+        AFTERNOON.forEach(t => fixed(t, 7));
+        AFTERNOON_PEAK.forEach(t => fixed(t, 7, { assumedPeak: true }));
       }
-      // Still exclude the disputed 22:00 entry and unconfirmed reverse trips.
-      // Lunch BN/Rogier waypoints are arrivals, not reverse departures.
     }
     return result.sort((a, b) => a.departure - b.departure);
   }
@@ -338,10 +359,9 @@
     if (iso.slice(0, 4) !== '2026') return { title: '2026 timetable only', note: 'No confirmed shuttle timetable for this year.', kind: 'warning' };
     if ([0, 6].includes(dow(iso))) return { title: 'Weekdays only', note: 'The staff shuttle is not listed for weekends.', kind: 'closed' };
     if (holiday(iso)) return { title: 'Holiday service unconfirmed', note: 'Public-holiday operation is not specified in the PDF.', kind: 'warning' };
-    if (direction === 'toTNT' && t >= '12:00') return { title: 'Return times unconfirmed', note: 'Afternoon BN → TNT departures remain unspecified. Lunchtime BN times are arrivals on the way to Rogier, not returns to TNT.', kind: 'warning' };
-    if (direction === 'toBN' && t >= '12:00' && t < '14:05') return { title: 'Lunch departs from TNT', note: 'TNT departures confirmed by you; BN arrival assumed 8 minutes later.', kind: 'confirmed' };
-    if (direction === 'toBN' && t > '21:40') return { title: 'Finished for today', note: '21:40 is the stated last TNT departure; the disputed 22:00 row is excluded.', kind: 'closed' };
-    return { title: 'Staff shuttle', note: '8-minute ride · timetable + your peak-grid assumption, not live-tracked.', kind: 'scheduled' };
+    if (direction === 'toBN' && t >= '12:00' && t < '14:05') return { title: 'Lunch departs from TNT', note: 'TNT departures confirmed by you; BN is 7 minutes later, Rogier 3 minutes after BN.', kind: 'confirmed' };
+    if (direction === 'toBN' && t > '22:00') return { title: 'Finished for today', note: '22:00 is the stated last TNT departure; its BN return leaves at 22:07.', kind: 'closed' };
+    return { title: 'Staff shuttle', note: '7-minute ride · timetable + your peak-grid assumption, not live-tracked.', kind: 'scheduled' };
   }
   function walkingEnabled(settings) {
     if (!settings.walking?.profiles) return false;
@@ -404,14 +424,17 @@
     return result;
   }
   function markDominated(rows) {
-    // Strictly earlier start AND strictly later final arrival. Equal arrivals
-    // are left to the user's operator preference. Cancellation is separate.
+    // Strictly later start AND a final arrival MORE than two minutes earlier.
+    // Equal arrivals are left to the user's operator preference, and an
+    // arrival gap of two minutes or less keeps both options visible.
+    // Cancellation is separate.
+    const ARRIVAL_GAP=120;
     const ordered=[...rows].sort((a,b)=>latestStart(b)-latestStart(a));
     const marked=new Map();let best=null;
     for (let i=0;i<ordered.length;) {
       let j=i+1;while(j<ordered.length && latestStart(ordered[j])===latestStart(ordered[i]))j++;
       for(let k=i;k<j;k++) {
-        const r=ordered[k], dominated=!r.cancelled && !r.boardingUnavailable && best && finalArrival(best)<finalArrival(r);
+        const r=ordered[k], dominated=!r.cancelled && !r.boardingUnavailable && best && finalArrival(r)-finalArrival(best)>ARRIVAL_GAP;
         marked.set(r.id,{...r,dominated:Boolean(dominated),collapseEligible:Boolean(dominated)&&r.operator!=='shuttle',dominatedBy:dominated?best.id:null});
       }
       for(let k=i;k<j;k++) {const r=ordered[k];if(!r.cancelled && !r.boardingUnavailable && (!best||finalArrival(r)<finalArrival(best)))best=r;}
@@ -471,8 +494,8 @@
         a.line.localeCompare(b.line,'en',{numeric:true}));
   }
   const api = { ZONE, parts, dateISO, hhmm, wallEpoch, serviceBase, shiftDate, dateKey, dateFromKey,
-    dow, activeServices, fresh, eventTime, operatorPage, timingStatus, occupancyInfo, STIB_WEB_DIRECTIONS, comparison, preferredStops, markDominated, operatorPriority, finalArrival, latestStart, busRows, shuttleRows, shuttleStatus, allRows, filterRows, walkingEnabled, applyWalking, planForTrain, DEFAULT_TRAIN_MARGIN,
-    holiday, easter, MORNING, AFTERNOON, MORNING_PEAK, AFTERNOON_PEAK, LUNCH, ROGIER_ESTIMATES, peakTimes, applyDeLijn, applyDeLijnStop, directDeLijnRecord, matchSTIBSchedules, applySTIB };
+    dow, activeServices, fresh, eventTime, operatorPage, stopPage, timingStatus, roundMinuteDelta, occupancyInfo, STIB_WEB_DIRECTIONS, comparison, preferredStops, markDominated, operatorPriority, finalArrival, latestStart, busRows, shuttleRows, shuttleStatus, allRows, filterRows, walkingEnabled, applyWalking, planForTrain, DEFAULT_TRAIN_MARGIN,
+    holiday, easter, MORNING, AFTERNOON, MORNING_PEAK, AFTERNOON_PEAK, LUNCH, RIDE_SECONDS, ROGIER_EXTRA_SECONDS, peakTimes, applyDeLijn, applyDeLijnStop, directDeLijnRecord, matchSTIBSchedules, applySTIB };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CommuteEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);

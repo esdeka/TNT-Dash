@@ -48,6 +48,19 @@ Original document: `static/shuttle.pdf`, user-uploaded 2026 timetable. Keep it u
 - Still exclude unspecified afternoon **BN → TNT** trips and the disputed **22:00** row. Retain TNT **21:40**. Do not extend the morning return rule to the afternoon without permission.
 - No weekend shuttle; public-holiday operation unconfirmed and excluded; PDF applies only in 2026.
 
+## Dual transport: server mode and serverless direct mode — keep them mirrored
+
+The dashboard runs two ways, and behaviour must stay identical in both. **Server mode**: `server.py` serves the built page with `window.COMMUTE_SERVER = true` and holds `/api/health`, `/api/live`, `POST /api/live/refresh`, `/api/next`, `/api/plan-train`, `/api/trains`. Keys stay private on the server. **Serverless direct mode** (`static/live-direct.js`, loaded when `COMMUTE_SERVER` is false): the built page itself calls the same upstreams — STIB waiting times and De Lijn GTFS-RT via the BMC discovery/registered gateways, the De Lijn stop API with its own key, and the iRail liveboard. CORS was verified on 2026-09-07 for all four gateways (iRail mirrors the request origin, which also legitimises `file://`).
+
+Hard rules for direct mode:
+
+- `live-direct.js` ports `server.py`/`delijn_live.py`/`rail.py` **behaviour exactly**: same normalisers, quota buckets (anonymous 80/day, registered 10000/day, 4/minute, separate De Lijn stop bucket), 60-second shared cache (`TTL`), `STALE_AFTER` 120s, fail-closed anonymous auto-refresh, error kinds/messages, `refreshesLeft` math and the stop↔trip join keys (`3_<stopcode>` batch path, `journeyId = date_lineCode_journey`, GTFS `tripId`). Change the Python and the JS together, like the engine.
+- Quotas/cache persist in `localStorage` (`commute.direct.*` keys), tolerating sandboxed iframes and private mode where storage throws.
+- No GTFS-RT protobuf parsing in the browser: JSON only. If the gateway ever returns protobuf in direct mode, De Lijn falls back to the timetable honestly. The Python protobuf fallback is server-only.
+- Keys resolve at runtime, strongest first: **browser localStorage** (entered via Reference → API keys, stored under `commute.keys.v1`) → **sibling `Dashboard-secrets.js`** (`window.COMMUTE_SECRETS`, loaded by a plain script tag so it works on `file://`; `build.py` writes it from the env key files and `.gitignore` keeps it out of git; rotate by editing it, no rebuild) → **build-embedded** (`COMMUTE_KEYS`, only with `--embed-keys`). `live-direct.js` re-resolves keys on every operation; `keyStatus()` reports masked values and which source supplied each key.
+- `Dashboard-secrets.js` must NEVER be committed (it is git-ignored), and the committed Dashboard.html is built with `--no-embed-keys`; artifacts with keys may only be hosted where the user alone can reach them.
+- The HA entities API (`/api/next`, `/api/plan-train`) stays server-only; it spawns `api_cli.js` and never spends upstream quota.
+
 ## One calculation engine
 
 `static/engine.js` is shared by browser and Node API. User-facing queries must use **`comparison()`**, not raw `allRows()`: comparison applies filters, preferred stops, walking, dominance and direction-specific tie-breaks. `allRows()` is the underlying timetable/live query used by diagnostics/tests.
