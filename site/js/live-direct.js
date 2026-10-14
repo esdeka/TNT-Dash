@@ -1,17 +1,17 @@
-/* Direct-to-operator live access for the standalone build (no web server).
+/* Direct-to-operator live access for the static site (no web server).
    Mirrors server.py / delijn_live.py / rail.py behaviour: STIB waiting times
    and De Lijn real-time via Belgian Mobility (anonymous discovery gateway, or
-   the registered gateway with your embedded key), the separate De Lijn stop
-   API when its key is embedded, and the iRail Brussels North departure board.
+   the registered gateway with your key), the separate De Lijn stop API when
+   its key is configured, and the iRail Brussels North departure board.
    CORS was verified for all four gateways on 2026-09-07. State and quotas
    persist in localStorage, so refresh allowances survive reloads like the
    server cache.
 
    Key resolution, strongest first: (1) keys typed into this browser
    (Reference → API keys, stored in localStorage), (2) a sibling
-   Dashboard-secrets.js next to Dashboard.html (window.COMMUTE_SECRETS,
-   loaded with a plain script tag so it also works on file://), (3) keys
-   embedded at build time. Without any key the anonymous gateways are used. */
+   Dashboard-secrets.js next to index.html (window.COMMUTE_SECRETS, loaded
+   with a plain script tag so it also works on file://). Without any key the
+   anonymous gateways are used. */
 window.CommuteLiveDirect = (() => {
   'use strict';
   const ANONYMOUS_BASE = 'https://api-management-discovery-production.azure-api.net/api/';
@@ -25,11 +25,11 @@ window.CommuteLiveDirect = (() => {
   const MANUAL_STORE = 'commute.keys.v1';
   function manualKeys() { try { const v = localStorage.getItem(MANUAL_STORE); return v ? (JSON.parse(v) || {}) : {}; } catch { return {}; } }
   function resolveKeys() {
-    const manual = manualKeys(), file = window.COMMUTE_SECRETS || {}, embedded = window.COMMUTE_KEYS || {}, out = {};
+    const manual = manualKeys(), file = window.COMMUTE_SECRETS || {}, out = {};
     for (const k of ['bmc', 'delijn']) {
-      const m = String(manual[k] || '').trim(), f = String(file[k] || '').trim(), e = String(embedded[k] || '').trim();
-      out[k] = m || f || e;
-      out[k + 'Source'] = m ? 'browser storage' : f ? 'secrets file' : e ? 'page build' : 'anonymous';
+      const m = String(manual[k] || '').trim(), f = String(file[k] || '').trim();
+      out[k] = m || f;
+      out[k + 'Source'] = m ? 'browser storage' : f ? 'secrets file' : 'anonymous';
     }
     return out;
   }

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#eaf1fa"><title>Commute · TNT ↔ BN</title><link rel="stylesheet" href="assets/commute.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#eaf1fa"><title>Commute · TNT ↔ BN</title><link rel="stylesheet" href="css/style.css"><link rel="stylesheet" href="css/readability.css"><link rel="stylesheet" href="css/personal.css"><link rel="stylesheet" href="css/glance.css"></head>
 <body data-direction="toBN">
 <a class="skip-link" href="#departures">Skip to departures</a>
 <header class="glance-header"><div class="direction-tabs" aria-label="Travel direction"><button data-action="direction" data-direction="toBN" id="to-bn" aria-pressed="true">To BN <span data-icon="arrow-right"></span></button><button data-action="direction" data-direction="toTNT" id="to-home" aria-pressed="false">To TNT <span data-icon="walking"></span></button></div><div id="start-controls" class="start-controls"><span>Start</span><div class="segmented"><button data-action="start" data-start="home" id="start-home">Home</button><button data-action="start" data-start="tnt" id="start-tnt">TNT stop</button></div></div><span id="local-clock" class="local-clock"></span><button class="reference-button" data-action="modal" data-tab="method" aria-label="Reference and settings"><span data-icon="info"></span><span>Reference</span></button></header>
@@ -37,7 +37,7 @@
 </main>
 <dialog id="details-dialog" aria-labelledby="dialog-title"><div class="dialog-shell"><div class="dialog-header"><div><span class="eyebrow" id="dialog-eyebrow">REFERENCE</span><h2 id="dialog-title">Details</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close dialog"><span data-icon="close"></span></button></div><div id="dialog-tabs" class="dialog-tabs"></div><div id="dialog-content" class="dialog-content"></div></div></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="./Dashboard-secrets.js" onerror="void 0"></script><script>window.COMMUTE_SERVER = false;window.COMMUTE_KEYS = {"bmc": "", "delijn": ""};</script>
-<script src="js/data-timetable.js"></script><script src="js/data-walking.js"></script><script type="application/json" id="operator-logos">{"delijn": "assets/logos/delijn.png", "stib": "assets/logos/mivb.png", "shuttle": "assets/logos/tnt.png"}</script><script>window.__PDF_PATH__='assets/TT-SHUTTLE-SCHEDULE.pdf';</script>
+<script src="./Dashboard-secrets.js" onerror="void 0"></script><script>window.COMMUTE_SERVER = false;</script>
+<script src="js/data/timetable.js"></script><script src="js/data/walking.js"></script>
 <script src="js/engine.js"></script><script src="js/live-direct.js"></script><script src="js/reference.js"></script><script src="js/app.js"></script>
 </body></html>

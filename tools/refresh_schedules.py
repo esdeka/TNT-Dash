@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Download official GTFS, retaining direct neighbourhood-stop ↔ BN bus trips.
-Run: python refresh_schedules.py [--cached] [--operators stib delijn]
-Large ZIPs are stored in .cache (not in the deliverable). Only the compact subset persists.
+Run: python tools/refresh_schedules.py [--cached] [--operators stib delijn]
+Large ZIPs are stored in .cache/ (git-ignored).
+Also regenerates site/js/data/ via build_data.py. Only the compact subset persists.
 Uses one public API request per selected operator when downloading; obey BMC quota.
 """
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import defaultdict
 import csv, io, zipfile, re, json, sys, urllib.request, email.utils, os, argparse
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'server'))
 from mobility_config import load_config
+import build_data
 
-ROOT = Path(__file__).resolve().parent
-CACHE = Path(os.environ.get('COMMUTE_GTFS_CACHE', str(ROOT.parent / '.cache' / 'transit')))
+CACHE = Path(os.environ.get('COMMUTE_GTFS_CACHE', str(ROOT / '.cache' / 'transit')))
 DATA = ROOT / 'data'
 CONFIG = load_config()
 BASE = CONFIG.base
@@ -143,3 +146,4 @@ if __name__ == '__main__':
     parser.add_argument('--operators', nargs='+', choices=['stib','delijn'], default=['stib','delijn'], help='Import selected providers and preserve all others')
     args = parser.parse_args()
     refresh(cached=args.cached, operators=args.operators)
+    build_data.main()

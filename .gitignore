@@ -1,6 +1,15 @@
-# Private operator keys for the standalone page; never commit real values
+# Private operator keys for the static site; never commit real values
 Dashboard-secrets.js
-__pycache__/
-.pytest_cache/
+
+# Server runtime state (quota counters, live cache)
+server/state/
 data/quota.json
 data/live-state.json
+
+# Downloaded GTFS archives and test scratch output
+.cache/
+
+# Tooling
+node_modules/
+__pycache__/
+.pytest_cache/

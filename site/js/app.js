@@ -1,12 +1,11 @@
 (function () {
   'use strict';
   const E = window.CommuteEngine;
-  // Data ships either inlined as JSON script tags (single-file build) or as
-  // window globals from js/data-*.js files (multi-file static site in site/).
-  const DATA = window.__TIMETABLE__ || JSON.parse(document.getElementById('timetable-data').textContent);
-  const WALKS = window.__WALKING__ || JSON.parse(document.getElementById('walking-data').textContent);
-  const PDF = window.__PDF_PATH__ ? '' : JSON.parse(document.getElementById('pdf-data').textContent);
-  const LOGOS = window.__LOGOS__ || JSON.parse(document.getElementById('operator-logos').textContent);
+  // Data ships as window globals from js/data/*.js (generated from data/*.json
+  // by tools/build_data.py) so the page also works when opened from file://.
+  const DATA = window.__TIMETABLE__;
+  const WALKS = window.__WALKING__;
+  const LOGOS = { delijn: 'assets/logos/delijn.png', stib: 'assets/logos/mivb.png', shuttle: 'assets/logos/tnt.png' };
   const FETCH_DATE = E.dateISO(Math.max(...Object.values(DATA.operators).map(d => Date.parse(d.fetchedAt || DATA.generatedAt) / 1000)));
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
@@ -122,7 +121,7 @@
   function stopBadge(row){const s=localStop(row),url=row.operator==='shuttle'?null:E.stopPage(row.operator,s);return url?`<a class="stop-page-link" href="${safeURL(url)}" target="_blank" rel="noopener noreferrer" title="Live departures at ${esc(s.name)} · ${esc(OP_NAMES[row.operator])}">${esc(stopName(s))}</a>`:`<span>${esc(stopName(s))}</span>`}
   function occupancy(row){const o=row.occupancy;if(!o)return '';return `<span data-status="${esc(o.status)}" class="occupancy ${o.unboardable?'unboardable':''}" title="${esc(o.label+' · '+o.source+' · this departure')}" aria-label="Occupancy: ${esc(o.label)}">${icon('people')}<span>${esc(o.label)}</span></span>`}
   let toastTimer;function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').classList.add('visible');toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4500)}
-  const reference=window.CommuteReference({E,DATA,WALKS,PDF,FETCH_DATE,state,OP_NAMES,STIB_LINES,esc,safeURL,icon,realNow,dateLabel,clock,shortDate});
+  const reference=window.CommuteReference({E,DATA,WALKS,FETCH_DATE,state,OP_NAMES,STIB_LINES,esc,safeURL,icon,realNow,dateLabel,clock,shortDate});
 
   function renderControls(){
     const inbound=state.direction==='toBN';document.body.dataset.direction=state.direction;
@@ -145,7 +144,7 @@
   }
   const autoAllowed=()=>state.access?.autoRefreshAllowed===true;
   // Dual transport: the local Python API when served by server.py, otherwise
-  // the direct-to-operator layer embedded in the standalone build.
+  // the direct-to-operator layer of the static site.
   const directLive=window.COMMUTE_SERVER?null:(window.CommuteLiveDirect?.available?window.CommuteLiveDirect:null);
   const liveLink=Boolean(window.COMMUTE_SERVER)||Boolean(directLive);
   function renderStatus(){
@@ -438,7 +437,7 @@
   async function handleKeyAction(action){
     if(state.dialogTab!=='keys')return;
     const D=window.CommuteLiveDirect;
-    if(!directLive||!D){toast('Browser keys apply to the standalone build; this copy is server-backed.');return}
+    if(!directLive||!D){toast('Browser keys apply to the static site; this copy is server-backed.');return}
     if(action==='save-keys'){
       const bmc=$('key-bmc').value.trim(),delijn=$('key-delijn').value.trim();
       D.setKeys({bmc,delijn});
