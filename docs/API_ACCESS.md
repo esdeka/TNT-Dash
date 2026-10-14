@@ -62,11 +62,11 @@ Example manual request:
 curl -X POST -H 'X-Commute-Refresh: manual' http://YOUR_HOST:3000/api/live/refresh
 ```
 
-The bundled HA package has separate `commute_refresh_live` (manual) and `commute_auto_refresh_live` actions. The optional automation uses the latter. External automations must not masquerade as manual requests. An old client without the header may receive cache only until reloaded/upgraded.
+External automations (e.g. a future Home Assistant integration) must send `automatic` and must not masquerade as manual requests. An old client without the header may receive cache only until reloaded/upgraded.
 
 ## Quota preservation
 
-`quota.json` version 2 has separate anonymous/registered buckets. Legacy `calls` migrate into the anonymous bucket; the previous usage is not discarded. Key changes within registered mode do not reset its bucket. Packaging excludes runtime state and never resets a running allowance.
+`quota.json` version 2 has separate anonymous/registered buckets. Legacy `calls` migrate into the anonymous bucket; the previous usage is not discarded. Key changes within registered mode do not reset its bucket. The server keeps it in git-ignored `server/state/` (override with `COMMUTE_STATE_DIR`); never commit or reset a running allowance.
 
 The static GTFS importer uses the same configured access/key. Its explicitly requested downloads are separate from the live-call counter; reserve quota headroom. iRail remains a separate service with its own limiter.
 

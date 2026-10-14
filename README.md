@@ -4,30 +4,31 @@ Compares direct staff-shuttle, STIB/MIVB and De Lijn connections between the Tou
 
 ## Run it
 
-Requirements: **Python 3.10+** only. **Node.js 20+** is needed for the test suites; nothing at runtime.
+**Just open it:** open `site/index.html` in a browser (`file://` works), or put the `site/` folder on any static host. The page contains the timetable snapshot, walks, shuttle rules and the original PDF, and calls the STIB, De Lijn and iRail APIs itself when online (their gateways send CORS headers; iRail also accepts `file://`). Offline, timetable and manual train-time planning keep working.
+
+**API keys (optional):** without a key, live data uses the anonymous Belgian Mobility gateway on manual **Refresh** only. To use your own key, either enter it in **Reference → API keys** (stored in this browser's localStorage), or copy `site/Dashboard-secrets.example.js` to `site/Dashboard-secrets.js` and fill it in. That file is git-ignored; never commit it, and only host a `site/` containing it where you alone can reach it. Browser storage wins over the file. With a key, auto refresh runs every minute while visible (up to 20 minutes per session); quotas and the 60-second shared cache persist in `localStorage`. The De Lijn GTFS-RT feed is JSON-only in the browser.
+
+**Optional server (`server/`):** serves the same `site/` with keys kept server-side, a shared cache/quota for all devices, and a small JSON API (see [API](docs/API.md)) for future integrations.
 
 ```bash
-python build.py
-python server.py --port 3000
+pip install -r server/requirements.txt
+python server/server.py --port 3000     # or: npm run serve
 ```
 
-On the same computer, open `http://localhost:3000`. For another device use that computer's LAN address. In Arena, use the **Commute dashboard** live preview. The server binds to `0.0.0.0` and accepts the proxied preview host.
+Open `http://localhost:3000` (or the machine's LAN address). Configure keys with `BMC_API_KEY` / `BMC_API_KEY_FILE` and optionally `DELIJN_API_KEY` / `DELIJN_API_KEY_FILE`. Runtime quota/cache state lives in git-ignored `server/state/`. The server never serves `Dashboard-secrets.js`. It has no authentication: keep it on a trusted LAN.
 
-Optional protobuf fallback for De Lijn:
+**One key is enough:** a single Belgian Mobility Marketplace key covers STIB and De Lijn real-time (De Lijn via the BMC GTFS-RT feed). A separate De Lijn stop-API key (its own delijn.be subscription) adds paired per-stop forecasts; if it is rejected, the dashboard warns and falls back to the BMC feed.
 
-```bash
-pip install -r requirements.txt
-```
+## Repository layout
 
-The portal currently supplies JSON. If it switches to protobuf and this optional parser is absent, De Lijn live data falls back honestly to the timetable.
-
-**`Dashboard.html` is a self-contained snapshot.** It includes the GTFS subset, walks, shuttle rules, original PDF, font and code. It works without an internet connection, including manual train-time planning — and with connectivity it also runs **entirely serverless**: the page itself calls the STIB, De Lijn and iRail APIs directly (all four gateways were verified to send `Access-Control-Allow-Origin: *`; iRail mirrors the caller's origin, which also covers `file://`).
-
-**Run without a web server (any static host or `file://`):** `python3 build.py` produces a key-free `Dashboard.html` plus, when your private key files are referenced in the environment, a git-ignored `Dashboard-secrets.js` next to it. Upload **both files** to a host only you can reach — the page loads the secrets file with a plain script tag (this also works from `file://`). Rotating keys never requires a rebuild: just edit `Dashboard-secrets.js`. Key precedence, strongest first: keys typed into **Reference → API keys** (browser localStorage) → the secrets file → any `--embed-keys` build values. Without keys the page uses the anonymous gateways on manual Refresh. With a key, auto refresh (every minute while visible, up to 20 minutes per session), quota counters and the 60-second shared cache behave exactly like server mode, persisted in `localStorage` instead of `data/`. `build.py --embed-keys` remains as the legacy single-file alternative; `--no-embed-keys` also removes the real secrets file for commit-safe artifacts. Browser limitations, kept honest: the De Lijn GTFS-RT fallback is JSON-only (the optional protobuf path is Python-only, but the De Lijn stop-API key avoids that feed anyway).
-
-**Multi-file static site:** the same build also writes `site/` — a standard static-website layout: `index.html` plus `assets/commute.css`, the Manrope font as a real `.woff2` file, the operator logos as PNGs, the shuttle PDF at `assets/TT-SHUTTLE-SCHEDULE.pdf`, and `js/` with the four application scripts plus `js/data-timetable.js` / `js/data-walking.js` (the schedule ships as `window` globals so `file://` keeps working — plain `fetch` of a JSON file does not). It is the same template, code and behaviour as `Dashboard.html`, just not inlined; the tiny HTML no longer embeds megabytes of data. `site/` never contains keys: copy your git-ignored `Dashboard-secrets.js` into it exactly as with the single file (the build does this automatically when your key files are configured), or enter keys per device in Reference → API keys. Deploy the whole folder to any static host.
-
-**Current deployment note (8 September 2026):** everything runs on the **single Belgian Mobility Marketplace key** — the server, the `file://` page and `site/` all fetch De Lijn real-time through the BMC GTFS-RT feed with that same key (2 BMC calls per refresh, quota accounted). A separate De Lijn stop-API key stays supported for more detailed paired stop forecasts — note it requires its own delijn.be product subscription (the BMC key is not valid there). If a configured De Lijn value is rejected or wrong, nothing breaks: the dashboard warns visibly and keeps De Lijn live via the BMC feed, charging the extra gateway call honestly.
+| Path | Contents |
+|---|---|
+| `site/` | The dashboard: `index.html`, `css/`, `js/` (engine, app, live access, reference), `js/data/` (generated), `assets/` (font, logos, shuttle PDF) |
+| `data/` | Canonical data: `timetable.json` (GTFS corridor subset), `walking.json` (walk estimates) |
+| `server/` | Optional Python server and live proxies (`server.py`, `rail.py`, `delijn_live.py`, `mobility_config.py`) |
+| `tools/` | `refresh_schedules.py` (GTFS import), `build_data.py` (data → `site/js/data/`) |
+| `tests/` | Engine, browser (Playwright) and server tests |
+| `docs/` | Architecture, operations, API, train planning, verification log |
 
 ## Quick-glance use
 
@@ -49,11 +50,9 @@ Bus-number links now select the correct STIB direction (`v`/`f`, mapped by desti
 
 ## Optional API-key secret
 
-In **HA OS app → Configuration**, enter the key in masked `bmc_api_key` and restart. Leave it blank for anonymous/manual access. For a normal server, configure `BMC_API_KEY` or `BMC_API_KEY_FILE` privately. Do not paste the key into chat or the HTML. See [API access setup](docs/API_ACCESS.md) for quotas, gateway overrides and the manual/automatic HTTP contract.
+Browser: Reference → API keys or `site/Dashboard-secrets.js` (see above). Server: `BMC_API_KEY` or `BMC_API_KEY_FILE`, set privately. Never put keys in chat, URLs or committed files. See [API access setup](docs/API_ACCESS.md) for quotas, gateway overrides and the manual/automatic HTTP contract. A configured key enables the registered gateway; failures do not silently revert to anonymous.
 
-A configured key enables the registered gateway; failures do not silently revert to anonymous. Actual registered access must be checked with your own subscription—we did not receive or test a real key here.
-
-**De Lijn stop forecasts:** configure your own De Lijn Open Data key in HA app `delijn_api_key` or server `DELIJN_API_KEY` / `DELIJN_API_KEY_FILE`. The supported multi-stop connector is implemented; without that key, the limited BMC fallback remains. See [De Lijn setup](docs/DELIJN_REALTIME.md). No real De Lijn key was available to validate authenticated upstream calls here.
+**De Lijn stop forecasts:** your own De Lijn Open Data key, via the API keys tab, the secrets file, or server `DELIJN_API_KEY` / `DELIJN_API_KEY_FILE`. See [De Lijn setup](docs/DELIJN_REALTIME.md).
 
 **STIB live window:** if a fresh response says next buses in 10 and 30 minutes, all schedules for that stop/line/direction through the last displayed 30-minute prediction are suppressed. Later GTFS departures remain. This does not assert exact trip identity. Matched scheduled times/delays are inferred, bounded and visibly approximate. Expired data still falls back to timetables.
 
@@ -74,14 +73,14 @@ A bus is reachable only when departure ≥ selected home start + walk. **Leave h
 
 ## Where live data comes from
 
-Python fetches official operator data via the **Belgian Mobility** public API:
+Official operator data comes via the **Belgian Mobility** public API:
 
 - STIB: `datasets/stibmivb/rt/WaitingTimes` — boarding-stop predictions; the other-end arrival uses a nearby scheduled ride estimate.
 - De Lijn: its supported **stop real-time API** with a separate key; otherwise BMC `gtfs/feed/delijn/rt/trip-update` remains the limited fallback.
 
 Base: `https://api-management-discovery-production.azure-api.net/api/`
 
-The browser calls this server, not those operator endpoints directly. The server selects anonymous/manual or registered/key-based access automatically. Only registered mode starts automatic visible-page refresh sessions. Bus cache: ≥60 seconds; predictions expire after 120 seconds. Live app limits: anonymous 80/day, registered default 10,000/day; both use a 60-second cache and 4/minute guard. Two provider calls per refresh. Hidden pages and completed sessions do not poll. A selected near-term train from today can be refreshed alongside the active session.
+The page calls these endpoints directly, or through the optional server, which then holds the keys. Either way the code selects anonymous/manual or registered/key-based access automatically. Only registered mode starts automatic visible-page refresh sessions. Bus cache: ≥60 seconds; predictions expire after 120 seconds. Live app limits: anonymous 80/day, registered default 10,000/day; both use a 60-second cache and 4/minute guard. Two provider calls per refresh. Hidden pages and completed sessions do not poll. A selected near-term train from today can be refreshed alongside the active session.
 
 Trains use **iRail's Brussels North liveboard**, separately from the bus APIs. Board loads are cached; a selected near-term train today can be rechecked during the active visible session. Train planning uses the **scheduled departure**, not a currently reported delay. Manual time entry does not verify that a train exists.
 
@@ -89,26 +88,16 @@ Full provenance, match rules and limitations: [Architecture](docs/ARCHITECTURE.m
 
 ## How offline data is updated
 
-**Manually**, not automatically in the HTML:
+**Manually**, never automatically:
 
 ```bash
-python refresh_schedules.py
-python build.py
-# Restart the running server, then reload the browser.
-python server.py --port 3000
+python tools/refresh_schedules.py            # downloads GTFS, writes data/timetable.json and site/js/data/
+python tools/refresh_schedules.py --cached   # reuse downloaded archives; NOT a fresh download
+python tools/refresh_schedules.py --operators stib   # STIB only, preserves De Lijn
+python tools/build_data.py                   # after editing data/walking.json by hand
 ```
 
-The importer makes two public API requests and downloads both full GTFS ZIPs. De Lijn was about **217 MB**. It streams the large stop-times table and retains a ~4 MB corridor subset, with calendars, exceptions, stop IDs and attribution. `data/walking.json` and shuttle assumptions are not overwritten.
-
-```bash
-python refresh_schedules.py --cached  # reuse archives; NOT a fresh download
-python build.py
-```
-
-For a targeted update, `python refresh_schedules.py --operators stib` downloads only STIB and preserves De Lijn. Add `--cached` to reuse the selected archive. The line 88 addition used one ~14.5 MB STIB download, not another full De Lijn download.
-
-A server restart is required after changing GTFS because live-route filtering is loaded at startup. Existing HTML copies must be rebuilt/redownloaded. Detailed safe update and deployment procedures: [Operations](docs/OPERATIONS.md).
-
+The importer makes one public API request per operator and downloads the full GTFS ZIPs into git-ignored `.cache/` (De Lijn is about **217 MB**). It streams the large stop-times table and keeps a ~4 MB corridor subset, with calendars, exceptions, stop IDs and attribution. `data/walking.json` and shuttle assumptions are not overwritten. Restart the server (if used) after changing GTFS, because live-route filtering is loaded at startup. Details: [Operations](docs/OPERATIONS.md).
 
 ## Documentation / other agents
 
@@ -120,20 +109,19 @@ A server restart is required after changing GTFS because live-route filtering is
 - [Train-planning semantics](docs/TRAIN_PLANNING.md)
 - [Verification & remaining limits](docs/VERIFICATION.md)
 
-The browser and the server use **one shared calculation engine**, `static/engine.js`. Do not duplicate its logic in Python.
+The browser and the tests use **one shared calculation engine**, `site/js/engine.js`. Do not duplicate its logic in Python.
 
 ## Tests
 
+Requires Node.js 20+ and Python 3.10+.
+
 ```bash
-node test_engine.js
-python -m unittest -v test_access.py test_api.py test_delijn_stop.py
-# With the server running and Playwright / Chromium installed:
-node test_ui.js
+npm install && npx playwright install chromium
+pip install -r tests/requirements.txt
+npm test            # all suites; or npm run test:engine | test:py | test:ui
 ```
 
-Optional HA YAML/template checks use `pip install -r requirements-test.txt`; they are not a full HA OS deployment test.
-
-Install the optional browser tooling with `npm install --no-save playwright` and `npx playwright install --with-deps chromium`. Some timetable regression examples are tied to the bundled September 2026 snapshot; review fixtures when replacing GTFS. See the verification log for what actually passed and what has not been tested on real HA OS.
+The UI suite starts its own server on a spare port with a throwaway state directory, and tests `file://` copies of `site/` without your real secrets file. Some timetable regression examples are tied to the bundled September 2026 snapshot; review fixtures when replacing GTFS.
 
 ## Attribution
 
@@ -141,4 +129,4 @@ Source: **STIB-MIVB – Open Data – 5 September 2026**. Source: **De Lijn – 
 
 Train information: **iRail / SNCB-NMBS**, [API documentation](https://docs.irail.be/). No assertion that the bus-data licence also covers the train API.
 
-Shuttle: original user-supplied 2026 Tour & Taxis PDF, unchanged, plus explicitly agreed user assumptions recorded in `AGENTS.md`. Walking times and pins are user-supplied. Font: Manrope, SIL Open Font License; `static/FONT-LICENSE.txt` is included.
+Shuttle: original user-supplied 2026 Tour & Taxis PDF, unchanged, plus explicitly agreed user assumptions recorded in `AGENTS.md`. Walking times and pins are user-supplied. Font: Manrope, SIL Open Font License; `site/assets/fonts/FONT-LICENSE.txt` is included.

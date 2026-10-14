@@ -4,15 +4,17 @@ Start here. This file records the user's actual decisions and the invariants tha
 
 ## Current task / verification state
 
-Updated **2026-09-07, app 1.4.0**. Latest user rules override older no-STIB-matching and bottom-collapse instructions:
+**2026-10-14, app 1.5.1, repository reorganised for a public GitHub repo.** Project moved from `commute/` to the repo root; `site/` is now the hand-edited source (no `build.py`, no single-file `Dashboard.html`, no build-embedded keys); the optional server lives in `server/`, tools in `tools/`, tests in `tests/`. Home Assistant packaging was removed in 1.5.1; the server is kept for possible future API/HA use. Verified on Windows: **61 engine tests, 24 Python tests and the full browser suite passed** (`npm test`).
 
-- **De Lijn supported stop real-time connector implemented** in `delijn_live.py`. It uses the documented multi-stop API and the user's separate De Lijn key. No real key was supplied here; actual authenticated deployment remains unverified/inactive until configured. BMC GTFS-RT remains fallback without it. Never use a website/shared/borrowed key.
+Earlier state, **2026-09-07, app 1.4.0**. Latest user rules override older no-STIB-matching and bottom-collapse instructions:
+
+- **De Lijn supported stop real-time connector implemented** in `server/delijn_live.py` (mirrored in `site/js/live-direct.js`). It uses the documented multi-stop API and the user's separate De Lijn key. No real key was supplied here; actual authenticated deployment remains unverified/inactive until configured. BMC GTFS-RT remains fallback without it. Never use a website/shared/borrowed key.
 - **Shuttle is never collapsed**, even when mathematically dominated. Keep `dominated` separate from `collapseEligible`.
 - Other dominated runs become **very thin inline expandable separators in sorted position**, not one group at the bottom. Reasons remain inside the expanded records; later departures remain.
 - **STIB scheduled/live matching is now explicitly requested by the user.** Match unique scheduled times one-to-one in order, within ±30 minutes, minimize total absolute time difference, and prefer earlier schedules on equal cost. This is an estimate, NOT a publisher trip ID. Show ≈ with original time/delay; keep `tripId:null`, `estimatedTripId`, `delayEstimated:true` and `scheduleMatchMethod`. Display STIB estimated deltas rounded symmetrically to whole minutes; actual live timestamps stay unchanged. A missing plausible match remains unknown.
 - Retain the authoritative STIB live window through the last prediction minute. Also remove assigned schedule slots beyond the window when an early live bus was matched to them, avoiding duplicate representations.
 
-Verified locally: **60 engine tests, 34 Python checks and the browser suite passed**. Exact limits are in `docs/VERIFICATION.md`; setup in `docs/DELIJN_REALTIME.md`. The global auto-refresh policy still requires the BMC key to avoid automatic anonymous STIB calls; a separate De Lijn key alone enables its stop values on manual refresh.
+Verified then: 60 engine tests, 34 Python checks (incl. since-removed HA checks) and the browser suite. Exact limits are in `docs/VERIFICATION.md`; setup in `docs/DELIJN_REALTIME.md`. The global auto-refresh policy still requires the BMC key to avoid automatic anonymous STIB calls; a separate De Lijn key alone enables its stop values on manual refresh.
 
 ## Current user decisions (latest wins)
 
@@ -32,11 +34,11 @@ Verified locally: **60 engine tests, 34 Python checks and the browser suite pass
 - With an API key configured, the user selected auto refresh **once per minute while visible, up to 20 minutes per opening/return**. Without a key, only explicit manual refresh may call upstream. Pause hidden pages; refresh on load/refocus/return if due. Manual refresh starts a new session. Keep the shared cache and daily quota. Refocus can recheck an exhausted quota so an old client does not remain stuck after it resets.
 - Occupancy only if explicitly supplied for the particular departure. Both live feeds inspected on 5 Sep supplied none. The STIB website's typical average crowding is NOT current bus load. Do not present it as live occupancy. Optional GTFS-RT origin departure occupancy is supported with exact trip/date/sequence matching.
 - **Links:** verified STIB codes are `v` and `f`, not `v/r`. 14/20 towards BN use `f`, away use `v`; 88 towards De Brouckere/BN uses `v`, towards UZ-VUB uses `f`. The map is destination-based in the engine. De Lijn uses the GTFS directional URL; R41 direction 0/1 was checked on the operator site.
-- User has HA OS. Default train station-transfer margin **5 minutes**, adjustable. Train mode still chooses the latest start meeting the **scheduled** train departure minus margin, never a delayed train time. No extra bus-boarding margin is added.
+- Default train station-transfer margin **5 minutes**, adjustable. Train mode still chooses the latest start meeting the **scheduled** train departure minus margin, never a delayed train time. No extra bus-boarding margin is added.
 
 ## Shuttle interpretation — do not silently change it
 
-Original document: `static/shuttle.pdf`, user-uploaded 2026 timetable. Keep it unchanged.
+Original document: `site/assets/shuttle-2026.pdf`, user-uploaded 2026 timetable. Keep it unchanged.
 
 - Employees-only; the user's ride-time assumption is **8 minutes**. No shuttle live tracking exists here.
 - Morning fixed times are BN → TNT. TNT returns are BN departures **+8 minutes**, e.g. 05:38 and 05:48. Quality: `derived` (Details/API; times appear black).
@@ -51,20 +53,20 @@ Original document: `static/shuttle.pdf`, user-uploaded 2026 timetable. Keep it u
 
 ## Dual transport: server mode and serverless direct mode — keep them mirrored
 
-The dashboard runs two ways, and behaviour must stay identical in both. **Server mode**: `server.py` serves the built page with `window.COMMUTE_SERVER = true` and holds `/api/health`, `/api/live`, `POST /api/live/refresh`, `/api/trains`. Keys stay private on the server. **Serverless direct mode** (`static/live-direct.js`, loaded when `COMMUTE_SERVER` is false): the built page itself calls the same upstreams — STIB waiting times and De Lijn GTFS-RT via the BMC discovery/registered gateways, the De Lijn stop API with its own key, and the iRail liveboard. CORS was verified on 2026-09-07 for all four gateways (iRail mirrors the request origin, which also legitimises `file://`).
+The dashboard runs two ways, and behaviour must stay identical in both. **Server mode** (optional, kept for future API/HA use): `server/server.py` serves `site/` and injects `window.COMMUTE_SERVER = true` into `index.html` (also stripping the secrets script tag) and holds `/api/health`, `/api/live`, `POST /api/live/refresh`, `/api/trains`. Keys stay private on the server. **Serverless direct mode** (the primary mode; `site/js/live-direct.js`, used when `COMMUTE_SERVER` is false): the page itself calls the same upstreams — STIB waiting times and De Lijn GTFS-RT via the BMC discovery/registered gateways, the De Lijn stop API with its own key, and the iRail liveboard. CORS was verified on 2026-09-07 for all four gateways (iRail mirrors the request origin, which also legitimises `file://`).
 
 Hard rules for direct mode:
 
-- `live-direct.js` ports `server.py`/`delijn_live.py`/`rail.py` **behaviour exactly**: same normalisers, quota buckets (anonymous 80/day, registered 10000/day, 4/minute, separate De Lijn stop bucket), 60-second shared cache (`TTL`), `STALE_AFTER` 120s, fail-closed anonymous auto-refresh, error kinds/messages, `refreshesLeft` math and the stop↔trip join keys (`3_<stopcode>` batch path, `journeyId = date_lineCode_journey`, GTFS `tripId`). Change the Python and the JS together, like the engine.
+- `live-direct.js` ports `server/server.py`/`delijn_live.py`/`rail.py` **behaviour exactly**: same normalisers, quota buckets (anonymous 80/day, registered 10000/day, 4/minute, separate De Lijn stop bucket), 60-second shared cache (`TTL`), `STALE_AFTER` 120s, fail-closed anonymous auto-refresh, error kinds/messages, `refreshesLeft` math and the stop↔trip join keys (`3_<stopcode>` batch path, `journeyId = date_lineCode_journey`, GTFS `tripId`). Change the Python and the JS together, like the engine.
 - **De Lijn stop-API fallback contract (both transports, v1.5.1):** when a De Lijn stop key is configured, the stop API is tried first; on ANY failure the same refresh falls through to the BMC GTFS-RT feed with the BMC key, and the successful payload gains `stopApiFallback: {kind, message}`. Only if the BMC attempt also fails is the stop-API error surfaced (`kind: 'stop-api'`). The fallback costs one extra BMC call, post-charged into the quota bucket (`server.py` and `live-direct.js` both do this). A rejected stop key with working BMC data shows "De Lijn key rejected · live via the BMC feed · check Reference".
 - Quotas/cache persist in `localStorage` (`commute.direct.*` keys), tolerating sandboxed iframes and private mode where storage throws.
 - No GTFS-RT protobuf parsing in the browser: JSON only. If the gateway ever returns protobuf in direct mode, De Lijn falls back to the timetable honestly. The Python protobuf fallback is server-only.
-- Keys resolve at runtime, strongest first: **browser localStorage** (entered via Reference → API keys, stored under `commute.keys.v1`) → **sibling `Dashboard-secrets.js`** (`window.COMMUTE_SECRETS`, loaded by a plain script tag so it works on `file://`; `build.py` writes it from the env key files and `.gitignore` keeps it out of git; rotate by editing it, no rebuild) → **build-embedded** (`COMMUTE_KEYS`, only with `--embed-keys`). `live-direct.js` re-resolves keys on every operation; `keyStatus()` reports masked values and which source supplied each key.
-- `Dashboard-secrets.js` must NEVER be committed (it is git-ignored), and the committed Dashboard.html is built with `--no-embed-keys`; artifacts with keys may only be hosted where the user alone can reach them.
+- Keys resolve at runtime, strongest first: **browser localStorage** (entered via Reference → API keys, stored under `commute.keys.v1`) → **sibling `Dashboard-secrets.js`** next to `site/index.html` (`window.COMMUTE_SECRETS`, loaded by a plain script tag so it works on `file://`; `.gitignore` keeps it out of git; rotate by editing it). There is no build-embedded key path any more. `live-direct.js` re-resolves keys on every operation; `keyStatus()` reports masked values and which source supplied each key.
+- `Dashboard-secrets.js` must NEVER be committed (it is git-ignored, and this repository is public). A `site/` folder containing it may only be hosted where the user alone can reach it. The server refuses to serve it.
 
 ## One calculation engine
 
-`static/engine.js` is shared by browser and Node API. User-facing queries must use **`comparison()`**, not raw `allRows()`: comparison applies filters, preferred stops, walking, dominance and direction-specific tie-breaks. `allRows()` is the underlying timetable/live query used by diagnostics/tests.
+`site/js/engine.js` is shared by the browser and the Node tests. User-facing queries must use **`comparison()`**, not raw `allRows()`: comparison applies filters, preferred stops, walking, dominance and direction-specific tie-breaks. `allRows()` is the underlying timetable/live query used by diagnostics/tests.
 
 - `comparison` looks back an extra hour before choosing the preferred stop, then enforces the real start/walk cutoff. This prevents a passed Picard call incorrectly turning into an alternative Suzan boarding option.
 - `preferredStops` groups De Lijn by exact trip/date, while STIB uses line/date because its live predictions have no trip ID. Explicit stop filters override default preferences.
@@ -81,7 +83,7 @@ R15's Suzan Daniel stop is user-reported as temporary because of works. Checked 
 
 ## Live-data invariants
 
-- Official STIB/De Lijn data is obtained through **Belgian Mobility**, server-side. No browser API key and no synthetic live data.
+- Official STIB/De Lijn data is obtained through **Belgian Mobility**, by the page itself (direct mode) or the server. Never synthetic live data.
 - STIB has no matching provider trip ID. The user now explicitly allows estimated one-to-one, order-preserving timetable matching at each stop/line/direction. Preserve actual live times, mark estimated originals/delays with ≈, expose estimate metadata and keep `tripId:null`. Do not claim exact identification or compute an unbounded match.
 - De Lijn uses exact trip/date/stop/sequence matching. Trip CANCELED = 3; stop SKIPPED = 1; stop NO_DATA = 2. Do not mix these enums.
 - Feed/fetch freshness: **120 s**. De Lijn feed timestamp is checked. Positive per-trip timing expires after **300 s**.
@@ -93,39 +95,40 @@ R15's Suzan Daniel stop is user-reported as temporary because of works. Checked 
 
 | File | Responsibility |
 |---|---|
-| `static/engine.js` | Calendars, direct routes, live matching, walks, train deadline planning |
-| `static/app.js` | Compact UI state, timing display, visible-page refresh controller, train selection |
-| `static/template.html` | Compact DOM; departure-first result, collapsed controls and list. ONE template for both build shapes: the `/*__HEAD__*/`, `/*__DATA__*/` and `/*__CODE__*/` markers are filled inline (single file) or with external references (static site) |
-| `static/style.css`, `readability.css`, `personal.css`, `glance.css` | Base/reference styles and final blue/green compact layout |
-| `static/reference.js` | Reference-only content; extracted from app.js, no main-page bloat |
-| `mobility_config.py` | Server-only key/secret-file selection, gateway, safe capabilities, unredirected auth header |
-| `server.py` | HTTP server, BMC/direct-De-Lijn source selection, cache/quota and the train board proxy |
-| `delijn_live.py` | Private De Lijn stop API batch, official-schema normalization, exact journey/stop matching inputs |
-| `rail.py` | Fixed Brussels North iRail proxy; validation, normalization, cache/rate limits |
-| `refresh_schedules.py` | Streams selected official GTFS ZIPs into the corridor subset; `--operators stib` preserves De Lijn |
-| `build.py` | Atomic dual build: self-contained `Dashboard.html` (everything embedded) **and** `site/` (multi-file: index.html + assets/css/font/logos/PDF + js/{app,engine,live-direct,reference,data-*}.js). Data reaches `site/index.html` via `window.__TIMETABLE__` / `__WALKING__` globals and `window.__PDF_PATH__` (`file://` cannot fetch JSON) — `static/app.js` / `live-direct.js` / `reference.js` read the global first, else the inlined JSON tag. Keep these accessors in sync across both files. `site/` never embeds keys |
-| `data/timetable.json` | Attributed GTFS snapshot and service calendars |
-| `data/walking.json` | User walk estimates at either home end and reference pins |
-| `test_engine.js`, `test_ui.js`, `test_api.py`, `test_access.py`, `test_ha_config.py` | Engine, browser, backend and optional HA-template regressions |
+| `site/index.html` | Compact DOM; departure-first result, collapsed controls and list. Edited directly; no template or build step |
+| `site/js/engine.js` | Calendars, direct routes, live matching, walks, train deadline planning |
+| `site/js/app.js` | Compact UI state, timing display, visible-page refresh controller, train selection |
+| `site/js/reference.js` | Reference-only content (incl. version/changelog); extracted from app.js, no main-page bloat |
+| `site/js/live-direct.js` | Direct-mode live access, quotas and cache in localStorage (mirrors the server) |
+| `site/js/data/*.js` | GENERATED by `tools/build_data.py` from `data/*.json` as `window.__TIMETABLE__` / `__WALKING__` globals (`file://` cannot fetch JSON). Do not hand-edit |
+| `site/css/style.css`, `readability.css`, `personal.css`, `glance.css` | Base/reference styles and final blue/green compact layout (linked in this order) |
+| `site/assets/` | Manrope font + licence, operator logos + provenance, original shuttle PDF |
+| `data/timetable.json` | Attributed GTFS snapshot and service calendars (canonical) |
+| `data/walking.json` | User walk estimates at either home end and reference pins (canonical) |
+| `server/server.py` | Optional HTTP server: serves `site/`, BMC/direct-De-Lijn source selection, cache/quota (`server/state/`, git-ignored), train board proxy |
+| `server/mobility_config.py` | Server-only key/secret-file selection, gateway, safe capabilities, unredirected auth header |
+| `server/delijn_live.py` | Private De Lijn stop API batch, official-schema normalization, exact journey/stop matching inputs |
+| `server/rail.py` | Fixed Brussels North iRail proxy; validation, normalization, cache/rate limits |
+| `tools/refresh_schedules.py` | Streams selected official GTFS ZIPs into the corridor subset; `--operators stib` preserves De Lijn; regenerates `site/js/data/` |
+| `tools/build_data.py` | Regenerates `site/js/data/*.js` from `data/*.json` |
+| `tests/` | `engine.test.js`, `ui.test.js` (Playwright, starts its own server), `test_api.py`, `test_access.py`, `test_delijn_stop.py` |
 
 `window.CommuteDashboard.getSnapshot()` is available for tests. A legacy `window.Northbound` alias and migration from the old localStorage key are kept only for compatibility; never display that name in the UI. Server marker is now `window.COMMUTE_SERVER`.
 
 ## Run, change, verify, deliver
 
 ```bash
-python build.py
-node test_engine.js
-python -m unittest -v test_access.py test_api.py test_ha_config.py test_delijn_stop.py
-python server.py --port 3000
-# In a second terminal, after installing Playwright / Chromium:
-node test_ui.js
+npm install && npx playwright install chromium   # once
+pip install -r tests/requirements.txt             # once
+npm test                                          # engine + Python + browser suites
+python server/server.py --port 3000               # optional server; or open site/index.html directly
 ```
 
-In Arena, use `start_process` for the server, bound to **0.0.0.0**, and a plain name such as **Commute dashboard**. Browser requests must be relative URLs. Do not hand a user a localhost URL; use the live preview. Background processes and installed caches may not survive a new sandbox; inspect and restart rather than assuming the server is running.
+After changing `data/*.json`, run `python tools/build_data.py`. Never test against or commit the user's real `site/Dashboard-secrets.js`; the UI suite copies `site/` without it.
 
-The downloaded HTML is offline: bus timetables, walks, shuttle and **manual train-time planning** work; live APIs / train boards do not. Never present the offline viewer as a running live server.
+Offline, the page keeps bus timetables, walks, shuttle and **manual train-time planning**; live APIs and train boards need network access. Never present an offline copy as live.
 
-See `docs/OPERATIONS.md` for refresh/build/restart and packaging. Do not redownload ~217 MB of De Lijn GTFS just to restyle the UI or add an STIB stop. Use `--operators stib` for a targeted import; `--cached` reuses that selected archive. The 88 addition refreshed STIB only and verified the De Lijn operator object was unchanged. Never package `quota.json`, `live-state.json`, credentials, node_modules, browser files or huge cached GTFS ZIPs.
+See `docs/OPERATIONS.md` for refresh/build/restart and packaging. Do not redownload ~217 MB of De Lijn GTFS just to restyle the UI or add an STIB stop. Use `--operators stib` for a targeted import; `--cached` reuses that selected archive. The 88 addition refreshed STIB only and verified the De Lijn operator object was unchanged. Never commit `server/state/`, `Dashboard-secrets.js`, credentials, node_modules, browser files or huge cached GTFS ZIPs.
 
 ## Known limitations / things not yet established
 
@@ -157,11 +160,11 @@ Uses `/DLKernOpenData/api/v1/haltes/lijst/{entity_stop_pairs}/real-time?maxAanta
 
 `applyDeLijnStop` matches date + line/journey + stop; exact planned time disambiguates repeated calls. Use actual destination data when present, otherwise project the GTFS ride and mark the arrival/delta estimated. A configured direct-key failure does not silently make an extra BMC call. Quota schema 3 preserves anonymous/registered history and adds `delijn_stop` (one batch call). With direct De Lijn active, BMC cost is one STIB request instead of two.
 
-HA app settings: masked `delijn_api_key`, optional `delijn_daily_limit`; environment `DELIJN_API_KEY` or `DELIJN_API_KEY_FILE`. Keep secrets private and excluded from packages. No authenticated stop call was executed with a real key in this workspace.
+Server settings: environment `DELIJN_API_KEY` or `DELIJN_API_KEY_FILE`; browser: API keys tab or the secrets file. Keep secrets private and out of git. No authenticated stop call was executed with a real key in this workspace.
 
 
 ## Operator logos (1.4.1)
 
-Generic departure-bus glyphs are replaced by the actual De Lijn, STIB/MIVB and T&T compact marks. `static/logos/` contains three PNGs and provenance notes. `build.py` embeds them as data URIs in `operator-logos`; do not add CDN dependencies. Keep image proportions/native colours, the walking sign and arrival arrow. Punctuality remains encoded by numeric time colour, not logo colour. No marketing tagline is included.
+Generic departure-bus glyphs are replaced by the actual De Lijn, STIB/MIVB and T&T compact marks. `site/assets/logos/` contains three PNGs and provenance notes; `app.js` references them by relative path. Do not add CDN dependencies. Keep image proportions/native colours, the walking sign and arrival arrow. Punctuality remains encoded by numeric time colour, not logo colour. No marketing tagline is included.
 
 Key clarification: BMC distributes De Lijn GTFS-RT, but the implemented direct stop connector is a separate De Lijn Open Data API/subscription. A De Lijn-issued key is needed for that connector, not automatically a BMC key. Do not assert that every possible private BMC product has been investigated. Manual anonymous STIB/BMC + a De Lijn key works without a BMC key.

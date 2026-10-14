@@ -3,26 +3,26 @@
 ## Components / data flow
 
 ```text
-Official BMC GTFS ZIPs ── refresh_schedules.py ── data/timetable.json
+Official BMC GTFS ZIPs ── tools/refresh_schedules.py ── data/timetable.json
 User walking pins ──────────────────────────── data/walking.json
-Original shuttle PDF + explicit user rules ─── static/engine.js
+Original shuttle PDF + explicit user rules ─── site/js/engine.js
                                       │
-                   build.py embeds everything into Dashboard.html
+        tools/build_data.py ── site/js/data/*.js (window globals)
                                       │
                  browser app.js ── shared engine.js ── recommendations
                                       ▲
   STIB WaitingTimes ─┐                │
-  De Lijn GTFS-RT ───┴─ server.py cache/normalize ── /api/live[ /refresh ]
+  De Lijn GTFS-RT ───┴─ live-direct.js (in the page, localStorage cache/quota)
+                      or server/server.py cache/normalize ── /api/live[ /refresh ]
 
-browser ── /api/trains ── server.py ── rail.py; the dashboard computes itself with the SAME engine.js
-                     cached live state + GTFS; zero upstream requests
+the dashboard always computes itself with the SAME engine.js from cached live state + GTFS
 
-Train selection ── /api/trains ── rail.py ── iRail Brussels North liveboard
+Train selection ── live-direct.js or /api/trains + rail.py ── iRail Brussels North liveboard
              chosen scheduled departure + margin ── engine.planForTrain
 Manual train time ──────────────────────────────────┘
 ```
 
-There is no frontend framework, external CDN dependency, geolocation tracking or analytics. All browser-facing API URLs are relative. `window.COMMUTE_SERVER` is false in the built file; `server.py` changes it to true only when serving HTML. The offline copy therefore does not misrepresent itself as a live service.
+There is no frontend framework, external CDN dependency, geolocation tracking or analytics. All browser-facing API URLs are relative. `window.COMMUTE_SERVER` is false in `site/index.html`; `server/server.py` changes it to true only when serving that page. Without the server the page uses direct operator access (`live-direct.js`), and offline it falls back to timetables without misrepresenting itself as live.
 
 ## Official static bus data
 
@@ -35,7 +35,7 @@ Public API base:
 | STIB-MIVB | `gtfs/feed/stibmivb/static` |
 | De Lijn | `gtfs/feed/delijn/static` |
 
-`refresh_schedules.py` downloads both ZIPs and streams the very large `stop_times.txt`, rather than unpacking the full network into the project. It selects direct bus legs (GTFS route type 3) serving a neighbourhood stop and BN in the correct order, with normal pickup/drop-off and ride ≤1 hour. It preserves service calendars and date exceptions. One physical vehicle may yield both a Picard and Suzan Daniel boarding option.
+`tools/refresh_schedules.py` downloads both ZIPs and streams the very large `stop_times.txt`, rather than unpacking the full network into the project. It selects direct bus legs (GTFS route type 3) serving a neighbourhood stop and BN in the correct order, with normal pickup/drop-off and ride ≤1 hour. It preserves service calendars and date exceptions. One physical vehicle may yield both a Picard and Suzan Daniel boarding option.
 
 Included snapshot, downloaded 4 September 2026:
 
@@ -103,9 +103,9 @@ Train mode still works backward from scheduled train departure minus the 5-minut
 
 ## Files and serving
 
-`build.py` embeds JSON, all three CSS layers, the font, scripts and original PDF in one HTML file, using an atomic replace. The server route marks it as live-capable. The shared `engine.js` is also required by the Node CLI bridge; no calculation logic is duplicated in Python.
+`site/` is a plain static website edited in place: `index.html` links four CSS layers and loads the generated data scripts, then `engine.js`, `live-direct.js`, `reference.js` and `app.js`. Data ships as `window` globals (not fetched JSON) so the page works from `file://`. The shared `engine.js` is also required by the Node tests; no calculation logic is duplicated in Python.
 
-`server.py` uses stdlib HTTP and a maximum of two concurrent Node planning subprocesses, with a timeout. Missing Node yields a clear 503 for the JSON planner while the browser UI still works. A timetable replacement requires server restart because the live filtering dataset is loaded at startup.
+`server/server.py` uses stdlib HTTP. It serves `site/` (refusing traversal and `Dashboard-secrets.js`), injects the server-mode marker into `index.html`, and proxies live data with server-held keys. A timetable replacement requires a server restart because the live filtering dataset is loaded at startup.
 
 Source documentation is exposed on a small explicit `/docs/...` allowlist. There is no arbitrary file-server route. The server is designed for a trusted LAN / authenticated preview, not as a publicly exposed production service.
 
@@ -137,9 +137,9 @@ STIB web links were checked in rendered operator pages on 2026-09-05. Codes are 
 
 Both inspected live bus payloads contained no occupancy fields. De Lijn normalization now preserves optional GTFS-RT `departureOccupancyStatus` / snake-case equivalent at a stop. The engine only attaches it with a matching trip, service date and origin sequence in fresh data. Explicit no-data occupancy is omitted. Not-accepting/not-boardable statuses cannot win. STIB website average crowding profiles are not imported as current vehicle load. No private website API/token is used by the dashboard.
 
-The source/referral material now lives in `static/reference.js`; the compact UI/controller in `static/app.js`, with final layout in `static/glance.css`. `build.py` embeds both modules and all CSS, preserving standalone/opaque iframe operation.
+The source/referral material lives in `site/js/reference.js`; the compact UI/controller in `site/js/app.js`, with final layout in `site/css/glance.css`. The page tolerates opaque-origin iframes where storage throws.
 
-The scoped STIB import for line 88 remains: `refresh_schedules.py --operators stib`, preserving De Lijn. No additional GTFS download was needed for this layout/ranking revision.
+The scoped STIB import for line 88 remains: `tools/refresh_schedules.py --operators stib`, preserving De Lijn. No additional GTFS download was needed for this layout/ranking revision.
 
 
 ## Private transport configuration and STIB coverage

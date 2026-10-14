@@ -6,4 +6,4 @@ Fetched from the operators' own public websites on 7 September 2026. Used only t
 - **STIB/MIVB** (`mivb.png`): https://www.stib-mivb.be/modules/stibmivb-template/images/favicon/android-chrome-192x192.png — official compact mark; transparent margins trimmed.
 - **Tour & Taxis** (`tnt.png`): https://tour-taxis.com/wp-content/themes/tour-et-taxis/library/dist/favicons/apple-touch-icon-180x180.png — official compact T&T mark; transparent margins trimmed. No marketing tagline is shown.
 
-`build.py` embeds the three PNGs as data URIs in `operator-logos`. The browser does not contact an operator/CDN to load them. Logos preserve their native proportions and colours; delay colours apply to the numeric times. Walking and arriving-arrow symbols are unchanged.
+The page loads the three PNGs from this folder by relative path. The browser does not contact an operator/CDN to load them. Logos preserve their native proportions and colours; delay colours apply to the numeric times. Walking and arriving-arrow symbols are unchanged.

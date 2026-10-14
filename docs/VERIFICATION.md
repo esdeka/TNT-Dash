@@ -1,4 +1,16 @@
-# Verification — current (1.5.1)
+# Verification — current (1.5.1, reorganised repository)
+
+Completed 14 October 2026 on Windows 11 (Python 3.14, Node 24, Playwright Chromium) after the repository reorganisation (`site/` as source, `server/`, `tools/`, `tests/`; single-file `Dashboard.html` and `build.py` removed).
+
+- `npm test`: **61 engine tests, 24 Python tests and the full browser suite passed.**
+- The browser suite now starts `server/server.py` itself with a throwaway `COMMUTE_STATE_DIR`, and tests `file://` copies of `site/` without the real secrets file. The former single-file `srcdoc` sandbox check is now an opaque-origin `<iframe sandbox="allow-scripts">` loading the served site.
+- New server checks: `Dashboard-secrets.js`, `/../` and `%2e%2e` traversal, and `/data/quota.json` all return 404.
+- Windows fix: the server and tools read text files as UTF-8 explicitly (the default cp1252 crashed `/docs/AGENTS.md`); `tzdata` added to `server/requirements.txt` for `zoneinfo`.
+- Not re-verified here: authenticated upstream calls with a real key. Older reports below reference the previous layout (`static/`, `build.py`, `Dashboard.html`, root-level scripts) and are kept as history.
+
+---
+
+# Verification — 1.5.1 (Arena workspace)
 
 Completed 8 September 2026. Single-key Belgian Mobility operation (De Lijn live via the BMC GTFS-RT feed, full corridor verified); a rejected/empty De Lijn stop-API value falls back to that feed in the same refresh (browser and server, quota post-charged); sibling secrets file + browser key storage; multi-file `site/` build next to the single file; Reference version tab; towards-BN timeline columns T&T shuttle, Suzan Daniel, Picard, Thurn en Taxis with horizontally levelled Picard↔Suzan twins.
 
