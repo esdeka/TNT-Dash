@@ -4,7 +4,8 @@
 
 The supported De Lijn stop API is now implemented. It requires a **De Lijn Open Data subscription key**, separate from the Belgian Mobility (BMC) key.
 
-- Subscribe to the **Open Data Free** product at https://data.delijn.be/products . It includes real-time information for stops.
+- Subscribe to the **Open Data Free** product at https://data.delijn.be/products . It includes real-time information for stops. Manage or rotate the key at https://portal.delijn.be/profile .
+- In the browser: `#delijn=…` in the page URL, Reference → API keys, or `site/Dashboard-secrets.js`.
 - For a normal server, configure **`DELIJN_API_KEY`** or **`DELIJN_API_KEY_FILE`** privately. Default app budget is `DELIJN_DAILY_LIMIT=10000`, within the assigned subscription quota.
 - Never paste the key into chat, HTML, a URL or a source file. The request key is an unredirected `Ocp-Apim-Subscription-Key` header, not forwarded on redirects.
 

@@ -6,7 +6,9 @@ Compares direct staff-shuttle, STIB/MIVB and De Lijn connections between the Tou
 
 **Just open it:** open `site/index.html` in a browser (`file://` works), or put the `site/` folder on any static host. The page contains the timetable snapshot, walks, shuttle rules and the original PDF, and calls the STIB, De Lijn and iRail APIs itself when online (their gateways send CORS headers; iRail also accepts `file://`). Offline, timetable and manual train-time planning keep working.
 
-**API keys (optional):** without a key, live data uses the anonymous Belgian Mobility gateway on manual **Refresh** only. To use your own key, either enter it in **Reference → API keys** (stored in this browser's localStorage), or copy `site/Dashboard-secrets.example.js` to `site/Dashboard-secrets.js` and fill it in. That file is git-ignored; never commit it, and only host a `site/` containing it where you alone can reach it. Browser storage wins over the file. With a key, auto refresh runs every minute while visible (up to 20 minutes per session); quotas and the 60-second shared cache persist in `localStorage`. The De Lijn GTFS-RT feed is JSON-only in the browser.
+**Hosted copy:** https://esdeka.github.io/TNT-Dash/ (GitHub Pages, redeployed on every push to `site/` and after each weekly timetable refresh). See [Home Assistant](#home-assistant).
+
+**API keys (optional):** without a key, live data uses the anonymous Belgian Mobility gateway on manual **Refresh** only. To use your own key, add it to the page address as `#bmc=…&delijn=…` (memory only, removed from the address after loading), enter it in **Reference → API keys** (stored in this browser's localStorage), or copy `site/Dashboard-secrets.example.js` to `site/Dashboard-secrets.js` and fill it in. That file is git-ignored; never commit it, and only host a `site/` containing it where you alone can reach it. Precedence: page URL → browser storage → secrets file. Manage or rotate keys at the [BMC portal](https://api-management-opendata-production.developer.azure-api.net/profile) and the [De Lijn portal](https://portal.delijn.be/profile). With a key, auto refresh runs every minute while visible (up to 20 minutes per session); quotas and the 60-second shared cache persist in `localStorage`. The De Lijn GTFS-RT feed is JSON-only in the browser.
 
 **Optional server (`server/`):** serves the same `site/` with keys kept server-side, a shared cache/quota for all devices, and a small JSON API (see [API](docs/API.md)) for future integrations.
 
@@ -19,6 +21,27 @@ Open `http://localhost:3000` (or the machine's LAN address). Configure keys with
 
 **One key is enough:** a single Belgian Mobility Marketplace key covers STIB and De Lijn real-time (De Lijn via the BMC GTFS-RT feed). A separate De Lijn stop-API key (its own delijn.be subscription) adds paired per-stop forecasts; if it is rejected, the dashboard warns and falls back to the BMC feed.
 
+## Home Assistant
+
+Add a **Webpage card** pointing at the hosted copy, with your keys in the URL fragment:
+
+```yaml
+type: iframe
+url: https://esdeka.github.io/TNT-Dash/?to=bn&start=home#bmc=YOUR_BMC_KEY&delijn=YOUR_DE_LIJN_KEY
+aspect_ratio: 180%
+```
+
+- The part after `#` is never sent to GitHub's servers (not in request logs or `Referer`). The page keeps the keys in memory only and strips them from its address.
+- Anyone who can edit your HA dashboards can read the keys in the card config.
+- Each device that shows the card refreshes on its own: with a BMC key, 2 calls per minute while visible, for up to 20 minutes per session, with its own quota counter.
+- Optional view parameters before the `#`: `to=bn|tnt`, `start=home|tnt`, `view=list|timeline`, `operator`, `stop`.
+
+One-time GitHub setup: repository **Settings → Pages → Source: GitHub Actions**.
+
+## Why timetables need refreshing
+
+STIB publishes its GTFS timetable only about **four weeks ahead** (De Lijn about ten), and the dashboard deliberately never extends a timetable past its end date: holidays, works and timetable changes would make guesses wrong. Live STIB predictions are also matched onto the timetable, so without it STIB disappears entirely. The **Refresh timetables** GitHub Action (`.github/workflows/refresh-timetable.yml`) therefore downloads both feeds every Monday through the anonymous gateway, checks them, commits changes and redeploys the site. Run it manually from the Actions tab if needed.
+
 ## Repository layout
 
 | Path | Contents |
@@ -27,7 +50,8 @@ Open `http://localhost:3000` (or the machine's LAN address). Configure keys with
 | `data/` | Canonical data: `timetable.json` (GTFS corridor subset), `walking.json` (walk estimates) |
 | `server/` | Optional Python server and live proxies (`server.py`, `rail.py`, `delijn_live.py`, `mobility_config.py`) |
 | `tools/` | `refresh_schedules.py` (GTFS import), `build_data.py` (data → `site/js/data/`) |
-| `tests/` | Engine, browser (Playwright) and server tests |
+| `tests/` | Engine, browser (Playwright) and server tests; `fixtures/` holds the frozen timetable they use |
+| `.github/workflows/` | `pages.yml` (deploy `site/`), `refresh-timetable.yml` (weekly data refresh) |
 | `docs/` | Architecture, operations, API, train planning, verification log |
 
 ## Quick-glance use

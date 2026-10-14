@@ -28,7 +28,7 @@ A non-empty environment key takes precedence over the file. An empty key/file gi
 Default bases:
 
 - Anonymous: `https://api-management-discovery-production.azure-api.net/api/`
-- Registered: `https://api-management-opendata-production.azure-api.net/api/`
+- Registered: `https://api-management-opendata-production.azure-api.net/api/` — manage or rotate the key at https://api-management-opendata-production.developer.azure-api.net/profile
 
 The key is sent in **`bmc-partner-key`** (the header BMC's API portal uses), never in the URL. Before 14 October 2026 the code sent `Ocp-Apim-Subscription-Key`, which this gateway ignores: requests then counted as unauthenticated and hit a shared quota ("Out of call volume quota") while the subscription showed 0 calls. The De Lijn stop API (`api.delijn.be`) does use `Ocp-Apim-Subscription-Key`. It is an unredirected request header, so it is not forwarded to another host if an API response redirects. It is not sent to iRail or operator web-page links. Registered failures do not silently fall back to anonymous access.
 

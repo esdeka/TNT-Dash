@@ -1,0 +1,89 @@
+# Weekly timetable refresh. STIB publishes GTFS only about four weeks ahead
+# and the dashboard never extends a timetable past its end date, so the saved
+# corridor subset must be refreshed regularly. Uses the anonymous BMC gateway
+# (one download per operator); no secrets are needed or used.
+name: Refresh timetables
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays 03:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-timetable
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download GTFS and rebuild the corridor subset
+        run: python tools/refresh_schedules.py
+
+      - name: Sanity-check the new timetable
+        run: |
+          python - <<'EOF'
+          import json, sys
+          from datetime import date
+          data = json.load(open('data/timetable.json', encoding='utf-8'))
+          today = date.today().strftime('%Y%m%d')
+          problems = []
+          for op, info in data['operators'].items():
+              print(op, info['feedStart'], '->', info['feedEnd'])
+              if info['feedEnd'] < today:
+                  problems.append(f'{op} feed already ended on {info["feedEnd"]}')
+              if not info.get('legs'):
+                  problems.append(f'{op} has no corridor trips')
+          stib_lines = {r['line'] for r in data['operators']['stib']['routes'].values()}
+          missing = {'14', '20', '88'} - stib_lines
+          if missing:
+              problems.append(f'STIB lines missing: {sorted(missing)}')
+          if problems:
+              sys.exit('Timetable check failed: ' + '; '.join(problems))
+          EOF
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Engine and server tests (frozen fixtures, guard the code)
+        run: |
+          npm ci
+          pip install -r tests/requirements.txt
+          npm run test:engine
+          npm run test:py
+
+      - name: Commit changed timetable
+        id: commit
+        run: |
+          if git diff --quiet -- data/ site/js/data/; then
+            echo "No timetable changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/timetable.json site/js/data/timetable.js
+          git commit -m "Refresh timetables (automatic)"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: refresh
+    if: needs.refresh.outputs.changed == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

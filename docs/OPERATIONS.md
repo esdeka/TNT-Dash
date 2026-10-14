@@ -17,7 +17,7 @@ Node.js 20+ is only needed for the test suites.
 
 ## Update offline bus schedules
 
-This is a **manual operation by default**. Do not confuse live refresh with GTFS refresh.
+The **Refresh timetables** GitHub Action does this every Monday (anonymous gateway, sanity check, fixture-based tests, commit only if changed, then redeploys Pages); trigger it from the Actions tab when needed. STIB publishes only about four weeks ahead, so it must keep running. Locally it is a manual operation. Do not confuse live refresh with GTFS refresh.
 
 1. Commit or otherwise keep the current `data/timetable.json` if you need rollback (git history is enough).
 2. Download and extract the new operator feeds; this also regenerates `site/js/data/`:
@@ -64,7 +64,7 @@ Only use a real contact address in a custom iRail user agent; do not invent one.
 
 ## Delivery
 
-There is no build or packaging step. Deploy by copying `site/` (static hosting) or by running `server/server.py` from a checkout. Put a git-ignored `site/Dashboard-secrets.js` beside `index.html` only where you alone can reach it; otherwise enter keys per device in Reference → API keys. Never commit `server/state/`, `.cache/` or any secrets file.
+There is no build or packaging step. `site/` is deployed to GitHub Pages by `.github/workflows/pages.yml` on every push that touches it (enable once: Settings → Pages → Source: GitHub Actions). Alternatively copy `site/` to any static host, or run `server/server.py` from a checkout. Put a git-ignored `site/Dashboard-secrets.js` beside `index.html` only where you alone can reach it; otherwise enter keys per device in Reference → API keys. Never commit `server/state/`, `.cache/` or any secrets file.
 
 
 ## Checks before delivery

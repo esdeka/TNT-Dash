@@ -7,7 +7,8 @@
    persist in localStorage, so refresh allowances survive reloads like the
    server cache.
 
-   Key resolution, strongest first: (1) keys typed into this browser
+   Key resolution, strongest first: (0) keys in the URL fragment
+   (#bmc=…&delijn=…, memory only), (1) keys typed into this browser
    (Reference → API keys, stored in localStorage), (2) a sibling
    Dashboard-secrets.js next to index.html (window.COMMUTE_SECRETS, loaded
    with a plain script tag so it also works on file://). Without any key the
@@ -24,12 +25,27 @@ window.CommuteLiveDirect = (() => {
   const MINUTE_LIMIT = 4, DL_DAILY_LIMIT = 10000;
   const MANUAL_STORE = 'commute.keys.v1';
   function manualKeys() { try { const v = localStorage.getItem(MANUAL_STORE); return v ? (JSON.parse(v) || {}) : {}; } catch { return {}; } }
+  // Keys in the URL fragment (#bmc=…&delijn=…), e.g. from a Home Assistant
+  // Webpage card. Fragments are never sent to the host. Read once, kept in
+  // memory only (never persisted), then removed from the visible URL.
+  const urlKeys = (() => {
+    const out = {};
+    try {
+      const hash = new URLSearchParams(location.hash.slice(1));
+      for (const k of ['bmc', 'delijn']) { if (hash.has(k)) { out[k] = String(hash.get(k) || '').trim(); hash.delete(k); } }
+      if ('bmc' in out || 'delijn' in out) {
+        const rest = hash.toString();
+        history.replaceState(history.state, '', location.pathname + location.search + (rest ? '#' + rest : ''));
+      }
+    } catch { /* sandboxed or no history API: keys still apply for this page load */ }
+    return out;
+  })();
   function resolveKeys() {
     const manual = manualKeys(), file = window.COMMUTE_SECRETS || {}, out = {};
     for (const k of ['bmc', 'delijn']) {
-      const m = String(manual[k] || '').trim(), f = String(file[k] || '').trim();
-      out[k] = m || f;
-      out[k + 'Source'] = m ? 'browser storage' : f ? 'secrets file' : 'anonymous';
+      const u = String(urlKeys[k] || ''), m = String(manual[k] || '').trim(), f = String(file[k] || '').trim();
+      out[k] = u || m || f;
+      out[k + 'Source'] = u ? 'page URL' : m ? 'browser storage' : f ? 'secrets file' : 'anonymous';
     }
     return out;
   }

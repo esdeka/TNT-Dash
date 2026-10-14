@@ -1,4 +1,8 @@
-# Verification — current (1.5.1, reorganised repository)
+# Verification — current (1.6.0)
+
+14 October 2026: URL-fragment keys added with a UI test (precedence over browser storage and secrets file, stripped from the address, never persisted, sent as `bmc-partner-key`). `npm test` passes: 61 engine tests, 24 Python tests, full browser suite. GitHub Pages and the weekly refresh workflow are verified on their first runs (see below if recorded).
+
+# Verification — 1.5.1, reorganised repository
 
 Completed 14 October 2026 on Windows 11 (Python 3.14, Node 24, Playwright Chromium) after the repository reorganisation (`site/` as source, `server/`, `tools/`, `tests/`; single-file `Dashboard.html` and `build.py` removed).
 

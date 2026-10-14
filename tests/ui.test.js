@@ -281,6 +281,20 @@ async function startServer(){
  assert.equal(sibStatus.bmcSource,'secrets file','sibling key file wins the source chain');assert.equal(sibStatus.delijnSource,'secrets file');
  assert.equal(sibStatus.bmc,'sib-…45','keys masked in status');
  await sib.close();
+ // Keys in the URL fragment (Home Assistant Webpage card): strongest source,
+ // memory only, stripped from the address, sent as bmc-partner-key.
+ const uc=await browser.newContext({viewport:{width:390,height:844}}),up=await uc.newPage();up.on('pageerror',e=>errors.push(e.message));
+ await up.addInitScript(()=>{try{if(!sessionStorage.getItem('seeded')){localStorage.setItem('commute.keys.v1',JSON.stringify({bmc:'stored-bmc-key-999',delijn:''}));sessionStorage.setItem('seeded','1')}}catch{}});
+ const bmcHeaders=[];await up.route('https://api-management-*/**',r=>{bmcHeaders.push(r.request().headers()['bmc-partner-key']);r.abort()});await up.route('https://api.delijn.be/**',r=>r.abort());await up.route('https://api.irail.be/**',r=>r.abort());
+ await up.goto(SIBLING+'?to=bn#bmc=url-bmc-key-123&delijn=url-dl-key-456&x=1',{waitUntil:'networkidle'});
+ const urlStatus=await up.evaluate(()=>window.CommuteLiveDirect.keyStatus());
+ assert.equal(urlStatus.bmcSource,'page URL','URL fragment beats browser storage and the secrets file');assert.equal(urlStatus.delijnSource,'page URL');assert.equal(urlStatus.bmc,'url-…23');
+ const urlAfter=await up.evaluate(()=>({hash:location.hash,search:location.search,stored:localStorage.getItem('commute.keys.v1')}));
+ assert.equal(urlAfter.hash,'#x=1','keys removed from the address, other fragment content kept');assert.match(urlAfter.search,/to=bn/);
+ assert.ok(!String(urlAfter.stored).includes('url-'),'URL keys are never persisted');
+ await up.locator('#refresh-button').click();await up.waitForFunction(()=>CommuteDashboard.getSnapshot().live?.providers?.stib);
+ assert.ok(bmcHeaders.length&&bmcHeaders.every(h=>h==='url-bmc-key-123'),'BMC requests carry the URL key in bmc-partner-key');
+ await uc.close();
  // Multi-file static site: site/index.html + css + js, loaded from file://,
  // data as window globals from js/data/*.js.
  const STATIC_SITE=siteCopy('static-site','window.COMMUTE_SECRETS={bmc:"sib-bmc-key-12345",delijn:""};');
