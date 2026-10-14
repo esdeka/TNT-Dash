@@ -12,6 +12,9 @@ from http.server import ThreadingHTTPServer
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'server'))
+# Frozen September 2026 data, so refreshing data/ never changes test expectations.
+import os
+os.environ.setdefault('COMMUTE_DATA_DIR', str(Path(__file__).resolve().parent / 'fixtures'))
 import rail
 import server
 

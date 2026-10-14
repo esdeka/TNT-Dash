@@ -124,7 +124,7 @@ npm test                                          # engine + Python + browser su
 python server/server.py --port 3000               # optional server; or open site/index.html directly
 ```
 
-After changing `data/*.json`, run `python tools/build_data.py`. Never test against or commit the user's real `site/Dashboard-secrets.js`; the UI suite copies `site/` without it.
+After changing `data/*.json`, run `python tools/build_data.py`. Tests never read `data/`: they use the frozen September 2026 copy in `tests/fixtures/` (the server honours `COMMUTE_DATA_DIR` / `COMMUTE_SITE_DIR` for this), so timetable refreshes do not break them. Only update fixtures deliberately. Never test against or commit the user's real `site/Dashboard-secrets.js`; the UI suite copies `site/` without it.
 
 Offline, the page keeps bus timetables, walks, shuttle and **manual train-time planning**; live APIs and train boards need network access. Never present an offline copy as live.
 
@@ -142,7 +142,7 @@ See `docs/OPERATIONS.md` for refresh/build/restart and packaging. Do not redownl
 
 ## Private access invariant
 
-Never request or embed the real subscription key in chat, HTML, public JSON, data files, URL parameters or logs. Use `BMC_API_KEY` / `BMC_API_KEY_FILE` or the sibling secrets file / browser storage. All public responses use `CONFIG.public()`, not a dataclass dump. Header `X-Commute-Refresh: manual` is required for anonymous upstream refresh; missing header fails closed as automatic. Auth errors must not fall back to anonymous. Static imports use the same server-only access config; no key is sent to iRail.
+Never request or embed the real subscription key in chat, HTML, public JSON, data files, URL parameters or logs. Use `BMC_API_KEY` / `BMC_API_KEY_FILE` or the sibling secrets file / browser storage. All public responses use `CONFIG.public()`, not a dataclass dump. The BMC key header is **`bmc-partner-key`** (as in BMC's API portal), in both `server/mobility_config.py` and `site/js/live-direct.js`; the BMC gateway silently ignores `Ocp-Apim-Subscription-Key`, which made every "registered" call anonymous until 2026-10-14. The De Lijn stop API (`api.delijn.be`) does use `Ocp-Apim-Subscription-Key`. Header `X-Commute-Refresh: manual` is required for anonymous upstream refresh; missing header fails closed as automatic. Auth errors must not fall back to anonymous. Static imports use the same server-only access config; no key is sent to iRail.
 
 
 ## De Lijn no-data diagnosis (2026-09-07)

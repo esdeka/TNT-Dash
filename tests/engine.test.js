@@ -1,8 +1,9 @@
 'use strict';
 const assert = require('node:assert/strict');
 const E = require('../site/js/engine.js');
-const D = require('../data/timetable.json');
-const W = require('../data/walking.json');
+// Frozen September 2026 data: refreshing data/ must not change test expectations.
+const D = require('./fixtures/timetable.json');
+const W = require('./fixtures/walking.json');
 let count=0;
 function test(name, fn) { fn(); console.log('✓',name); count++; }
 const ref = (d,t) => E.wallEpoch(d,t);

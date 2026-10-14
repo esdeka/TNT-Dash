@@ -19,7 +19,9 @@ from mobility_config import load_config
 
 SERVER_DIR = Path(__file__).resolve().parent
 ROOT = SERVER_DIR.parent
-SITE = ROOT / 'site'
+# Overridable so tests can serve a prepared copy with frozen fixture data.
+SITE = Path(os.environ.get('COMMUTE_SITE_DIR', str(ROOT / 'site')))
+DATA_DIR = Path(os.environ.get('COMMUTE_DATA_DIR', str(ROOT / 'data')))
 # Never serve browser-side key files: in server mode keys stay on the server.
 PRIVATE_SITE_FILES = {'Dashboard-secrets.js'}
 CONFIG = load_config()
@@ -32,7 +34,7 @@ QUOTA_PATH = STATE_DIR / 'quota.json'
 TTL = 60
 STALE_AFTER = 120
 LOCK = threading.Lock()
-TIMETABLE = json.loads((ROOT / 'data' / 'timetable.json').read_text(encoding='utf-8'))
+TIMETABLE = json.loads((DATA_DIR / 'timetable.json').read_text(encoding='utf-8'))
 FEED_PATHS = {'stib':'datasets/stibmivb/rt/WaitingTimes', 'delijn':'gtfs/feed/delijn/rt/trip-update'}
 ENDPOINTS = {op: BASE + path for op,path in FEED_PATHS.items()}
 DL_STOPS = tuple(TIMETABLE['operators']['delijn']['stops'])

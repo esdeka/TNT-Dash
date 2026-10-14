@@ -5,16 +5,19 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
-const {spawn}=require('node:child_process'),{pathToFileURL}=require('node:url');
-const E=require('../site/js/engine.js'),D=require('../data/timetable.json');
+const {spawn}=require('node:child_process'),{pathToFileURL,fileURLToPath}=require('node:url');
+const E=require('../site/js/engine.js'),D=require('./fixtures/timetable.json');
 const ROOT=path.join(__dirname,'..'),SITE=path.join(ROOT,'site');
 const cache=path.join(ROOT,'.cache','ui-test');fs.mkdirSync(cache,{recursive:true});
 // A copy of site/ without the real (git-ignored) secrets file, optionally with a fixture one.
-function siteCopy(name,secrets){const dir=path.join(cache,name);fs.rmSync(dir,{recursive:true,force:true});fs.cpSync(SITE,dir,{recursive:true,filter:s=>path.basename(s)!=='Dashboard-secrets.js'});if(secrets)fs.writeFileSync(path.join(dir,'Dashboard-secrets.js'),secrets);return pathToFileURL(path.join(dir,'index.html')).href}
+// Frozen September 2026 data replaces site/js/data/ so refreshing data/ never changes test expectations.
+const FIXTURES=path.join(__dirname,'fixtures');
+function siteCopy(name,secrets){const dir=path.join(cache,name);fs.rmSync(dir,{recursive:true,force:true});fs.cpSync(SITE,dir,{recursive:true,filter:s=>path.basename(s)!=='Dashboard-secrets.js'});for(const [file,global] of [['timetable','__TIMETABLE__'],['walking','__WALKING__']])fs.writeFileSync(path.join(dir,'js','data',file+'.js'),`window.${global}=${fs.readFileSync(path.join(FIXTURES,file+'.json'),'utf8').trim()};
+`);if(secrets)fs.writeFileSync(path.join(dir,'Dashboard-secrets.js'),secrets);return pathToFileURL(path.join(dir,'index.html')).href}
 async function startServer(){
  if(process.env.DASHBOARD_URL)return{url:process.env.DASHBOARD_URL,stop(){}};
  const port=3100+Math.floor(Math.random()*800),state=fs.mkdtempSync(path.join(cache,'state-'));
- const env={...process.env,COMMUTE_STATE_DIR:state};for(const k of['BMC_API_KEY','BMC_API_KEY_FILE','DELIJN_API_KEY','DELIJN_API_KEY_FILE'])delete env[k];
+ const served=siteCopy('served'),env={...process.env,COMMUTE_STATE_DIR:state,COMMUTE_SITE_DIR:path.dirname(fileURLToPath(served)),COMMUTE_DATA_DIR:FIXTURES};for(const k of['BMC_API_KEY','BMC_API_KEY_FILE','DELIJN_API_KEY','DELIJN_API_KEY_FILE'])delete env[k];
  const child=spawn(process.env.PYTHON||'python',[path.join(ROOT,'server','server.py'),'--port',String(port)],{env,stdio:['ignore','pipe','pipe']});
  let log='';child.stderr.on('data',d=>{log=(log+d).slice(-4000)});  // request log; shown only if the server dies
  await new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',c=>reject(new Error(`server exited ${c}\n${log}`)));child.stdout.on('data',d=>{if(String(d).includes('listening'))resolve()})});

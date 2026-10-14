@@ -13,6 +13,9 @@ import unittest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'server'))
+# Frozen September 2026 data, so refreshing data/ never changes test expectations.
+import os
+os.environ.setdefault('COMMUTE_DATA_DIR', str(Path(__file__).resolve().parent / 'fixtures'))
 import mobility_config as mc
 import server
 
@@ -27,7 +30,7 @@ class ConfigurationTests(unittest.TestCase):
             self.assertEqual(c.mode,'anonymous')
             self.assertFalse(c.public()['autoRefreshAllowed'])
             self.assertEqual(c.daily_limit,80)
-            self.assertIsNone(c.request('datasets/stibmivb/rt/WaitingTimes').get_header('Ocp-apim-subscription-key'))
+            self.assertIsNone(c.request('datasets/stibmivb/rt/WaitingTimes').get_header('Bmc-partner-key'))
 
     def test_key_uses_registered_gateway_without_exposing_or_redirecting_secret(self):
         c=mc.load_config({'BMC_API_KEY':FAKE_KEY})
@@ -35,12 +38,12 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(c.daily_limit,10000)
         self.assertTrue(c.public()['autoRefreshAllowed'])
         req=c.request('gtfs/feed/delijn/rt/trip-update')
-        self.assertEqual(req.get_header('Ocp-apim-subscription-key'),FAKE_KEY)
+        self.assertEqual(req.get_header('Bmc-partner-key'),FAKE_KEY)
         self.assertNotIn(FAKE_KEY,req.full_url)
         self.assertNotIn(FAKE_KEY,repr(c))
         self.assertNotIn(FAKE_KEY,json.dumps(c.public()))
         redirect=HTTPRedirectHandler().redirect_request(req,None,302,'',{},'https://example.org/redirect')
-        self.assertIsNone(redirect.get_header('Ocp-apim-subscription-key'))
+        self.assertIsNone(redirect.get_header('Bmc-partner-key'))
 
     def test_secret_file_and_validation(self):
         with TemporaryDirectory() as tmp:
