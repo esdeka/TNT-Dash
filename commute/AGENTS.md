@@ -23,6 +23,7 @@ Verified locally: **60 engine tests, 34 Python checks and the browser suite pass
 - **BN → home now includes the walking time after alighting.** Reuse the user estimates: Picard 5 min, shuttle 5 min, Suzan Daniel 8 min, Thurn en Taxis 11 min. The earlier “no reverse walk” rule is superseded.
 - Original three reference pins are user-provided. Thurn has an 11-minute user estimate but no personal pin; actual coordinates come from STIB. Do not overwrite individual operator stop coordinates. The user approved 8 minutes for all nearby Suzan Daniel platforms.
 - Stop preference: **Home: Picard over Suzan Daniel. TNT start: Suzan Daniel over Picard. Return: Picard where served.** Keep line 20 at Suzan and 88 at Thurn. De Lijn exact trip groups can fall back when the preferred stop is skipped/not boardable. STIB has no live trip IDs, so its line-level stop policy must not invent vehicle pairing.
+- Timeline (to BN): columns **T&T shuttle, Suzan Daniel, Picard, Thurn en Taxis** (Picard only from home). A Picard card twinning a Suzan card (same trip — all Picard buses stop at Suzan) plots at the SUZAN tick so both cards share one exact height with a horizontal connector; the pair is placed joint-atomically in the packing waterline (`drawTimeline`, effective time in `data-eff`). Cards always display their own stop's honest departure time.
 - User confirmed **retain later departures of the same line**. Only duplicate stop alternatives are suppressed, not all future buses of that line.
 - Keep strictly dominated alternatives (except the shuttle stays unfolded): earlier journey start AND later final arrival than another option. Place in thin inline closed-by-default separators with a reason; never collapse shuttle; **not cancellation**, not deletion. Equal arrivals are not strict dominance. Only usable options can dominate others.
 - Ordinary ranking: exact **final arrival** first (BN outbound, home on return); operator preference breaks ties; then later feasible start. Outbound order: Shuttle → De Lijn → MIVB 14/20 → 88. Return order: Shuttle → MIVB 14/20 → 88 → De Lijn.
@@ -50,16 +51,16 @@ Original document: `static/shuttle.pdf`, user-uploaded 2026 timetable. Keep it u
 
 ## Dual transport: server mode and serverless direct mode — keep them mirrored
 
-The dashboard runs two ways, and behaviour must stay identical in both. **Server mode**: `server.py` serves the built page with `window.COMMUTE_SERVER = true` and holds `/api/health`, `/api/live`, `POST /api/live/refresh`, `/api/next`, `/api/plan-train`, `/api/trains`. Keys stay private on the server. **Serverless direct mode** (`static/live-direct.js`, loaded when `COMMUTE_SERVER` is false): the built page itself calls the same upstreams — STIB waiting times and De Lijn GTFS-RT via the BMC discovery/registered gateways, the De Lijn stop API with its own key, and the iRail liveboard. CORS was verified on 2026-09-07 for all four gateways (iRail mirrors the request origin, which also legitimises `file://`).
+The dashboard runs two ways, and behaviour must stay identical in both. **Server mode**: `server.py` serves the built page with `window.COMMUTE_SERVER = true` and holds `/api/health`, `/api/live`, `POST /api/live/refresh`, `/api/trains`. Keys stay private on the server. **Serverless direct mode** (`static/live-direct.js`, loaded when `COMMUTE_SERVER` is false): the built page itself calls the same upstreams — STIB waiting times and De Lijn GTFS-RT via the BMC discovery/registered gateways, the De Lijn stop API with its own key, and the iRail liveboard. CORS was verified on 2026-09-07 for all four gateways (iRail mirrors the request origin, which also legitimises `file://`).
 
 Hard rules for direct mode:
 
 - `live-direct.js` ports `server.py`/`delijn_live.py`/`rail.py` **behaviour exactly**: same normalisers, quota buckets (anonymous 80/day, registered 10000/day, 4/minute, separate De Lijn stop bucket), 60-second shared cache (`TTL`), `STALE_AFTER` 120s, fail-closed anonymous auto-refresh, error kinds/messages, `refreshesLeft` math and the stop↔trip join keys (`3_<stopcode>` batch path, `journeyId = date_lineCode_journey`, GTFS `tripId`). Change the Python and the JS together, like the engine.
+- **De Lijn stop-API fallback contract (both transports, v1.5.1):** when a De Lijn stop key is configured, the stop API is tried first; on ANY failure the same refresh falls through to the BMC GTFS-RT feed with the BMC key, and the successful payload gains `stopApiFallback: {kind, message}`. Only if the BMC attempt also fails is the stop-API error surfaced (`kind: 'stop-api'`). The fallback costs one extra BMC call, post-charged into the quota bucket (`server.py` and `live-direct.js` both do this). A rejected stop key with working BMC data shows "De Lijn key rejected · live via the BMC feed · check Reference".
 - Quotas/cache persist in `localStorage` (`commute.direct.*` keys), tolerating sandboxed iframes and private mode where storage throws.
 - No GTFS-RT protobuf parsing in the browser: JSON only. If the gateway ever returns protobuf in direct mode, De Lijn falls back to the timetable honestly. The Python protobuf fallback is server-only.
 - Keys resolve at runtime, strongest first: **browser localStorage** (entered via Reference → API keys, stored under `commute.keys.v1`) → **sibling `Dashboard-secrets.js`** (`window.COMMUTE_SECRETS`, loaded by a plain script tag so it works on `file://`; `build.py` writes it from the env key files and `.gitignore` keeps it out of git; rotate by editing it, no rebuild) → **build-embedded** (`COMMUTE_KEYS`, only with `--embed-keys`). `live-direct.js` re-resolves keys on every operation; `keyStatus()` reports masked values and which source supplied each key.
 - `Dashboard-secrets.js` must NEVER be committed (it is git-ignored), and the committed Dashboard.html is built with `--no-embed-keys`; artifacts with keys may only be hosted where the user alone can reach them.
-- The HA entities API (`/api/next`, `/api/plan-train`) stays server-only; it spawns `api_cli.js` and never spends upstream quota.
 
 ## One calculation engine
 
@@ -86,7 +87,6 @@ R15's Suzan Daniel stop is user-reported as temporary because of works. Checked 
 - Feed/fetch freshness: **120 s**. De Lijn feed timestamp is checked. Positive per-trip timing expires after **300 s**.
 - Critical: handle De Lijn cancellations/skipped stops **before** rejecting old per-trip timing. A cancellation still present in a fresh feed remains valid even if last modified an hour ago. This regression is tested.
 - Backend cache ≥60 s. Anonymous: manual-only, 80 calls / rolling 24h. Registered key: default 10,000/day, configurable within assigned quota. Both modes cap at 4/minute. Quota version 2 preserves separate mode buckets and migrates legacy anonymous calls. Two calls per refresh. Preserve runtime quota state. Never reset it for testing or packaging.
-- `/api/next` and `/api/plan-train` are read-only calculations on cached live state plus timetables. Polling them must make **zero upstream requests**.
 - iRail has a separate cache/rate limiter. A selected near-term train from today can be rechecked with the visible-page live session; no background/future-date polling. Cancelled/departed trains cannot be selected.
 
 ## Where things live
@@ -95,19 +95,17 @@ R15's Suzan Daniel stop is user-reported as temporary because of works. Checked 
 |---|---|
 | `static/engine.js` | Calendars, direct routes, live matching, walks, train deadline planning |
 | `static/app.js` | Compact UI state, timing display, visible-page refresh controller, train selection |
-| `static/template.html` | Compact DOM; departure-first result, collapsed controls and list |
+| `static/template.html` | Compact DOM; departure-first result, collapsed controls and list. ONE template for both build shapes: the `/*__HEAD__*/`, `/*__DATA__*/` and `/*__CODE__*/` markers are filled inline (single file) or with external references (static site) |
 | `static/style.css`, `readability.css`, `personal.css`, `glance.css` | Base/reference styles and final blue/green compact layout |
 | `static/reference.js` | Reference-only content; extracted from app.js, no main-page bloat |
 | `mobility_config.py` | Server-only key/secret-file selection, gateway, safe capabilities, unredirected auth header |
-| `server.py` | HTTP server, BMC/direct-De-Lijn source selection, cache/quota and planning endpoints |
+| `server.py` | HTTP server, BMC/direct-De-Lijn source selection, cache/quota and the train board proxy |
 | `delijn_live.py` | Private De Lijn stop API batch, official-schema normalization, exact journey/stop matching inputs |
 | `rail.py` | Fixed Brussels North iRail proxy; validation, normalization, cache/rate limits |
-| `api_cli.js` | JSON-in/out Node bridge into the same engine; no networking |
 | `refresh_schedules.py` | Streams selected official GTFS ZIPs into the corridor subset; `--operators stib` preserves De Lijn |
-| `build.py` | Atomic, self-contained HTML build with data/font/PDF/JS/CSS embedded |
+| `build.py` | Atomic dual build: self-contained `Dashboard.html` (everything embedded) **and** `site/` (multi-file: index.html + assets/css/font/logos/PDF + js/{app,engine,live-direct,reference,data-*}.js). Data reaches `site/index.html` via `window.__TIMETABLE__` / `__WALKING__` globals and `window.__PDF_PATH__` (`file://` cannot fetch JSON) — `static/app.js` / `live-direct.js` / `reference.js` read the global first, else the inlined JSON tag. Keep these accessors in sync across both files. `site/` never embeds keys |
 | `data/timetable.json` | Attributed GTFS snapshot and service calendars |
 | `data/walking.json` | User walk estimates at either home end and reference pins |
-| `ha_app/`, `home_assistant/` | HA OS app packaging and REST/template sensor configuration |
 | `test_engine.js`, `test_ui.js`, `test_api.py`, `test_access.py`, `test_ha_config.py` | Engine, browser, backend and optional HA-template regressions |
 
 `window.CommuteDashboard.getSnapshot()` is available for tests. A legacy `window.Northbound` alias and migration from the old localStorage key are kept only for compatibility; never display that name in the UI. Server marker is now `window.COMMUTE_SERVER`.
@@ -131,7 +129,6 @@ See `docs/OPERATIONS.md` for refresh/build/restart and packaging. Do not redownl
 
 ## Known limitations / things not yet established
 
-- No actual connection to the user's Home Assistant instance has been made. A generated HA OS package / YAML is not the same as an installed, validated HA app.
 - Only direct stop-to-stop bus/shuttle legs. No pedestrian route geometry, accessibility/platform route, tickets, guaranteed transfers or full disruption coverage.
 - iRail is a separate open-data service, not a direct official SNCB API contract. Distant dates may fail. A train board is not a search for every intermediate destination.
 - Ordinary planning includes the walk at the home end but does not include a station-platform allowance. Train mode does, using the user's 5-minute estimate.
@@ -139,13 +136,10 @@ See `docs/OPERATIONS.md` for refresh/build/restart and packaging. Do not redownl
 - DST fold/gap disambiguation and a complete assistive-technology accessibility audit remain untested.
 - API is intended for a trusted LAN and has no built-in authentication. Do not expose it publicly without an authenticated reverse proxy or VPN.
 
-## HA data-scope upgrade
-
-App 1.1.0 adds Thurn en Taxis. STIB `stopScopeVersion` is now 2 (legacy missing version = 1). `ha_app/run.py` selects persisted data per operator only when its scope is compatible and it is newer. Never let a newer cached old-scope STIB extraction hide 88. De Lijn is evaluated independently so its newer compatible data is retained. The selector is import-safe and unit-tested; full HA OS deployment is still unverified.
 
 ## Private access invariant
 
-Never request or embed the real subscription key in chat, HTML, public JSON, data files, URL parameters or logs. Use `BMC_API_KEY` / `BMC_API_KEY_FILE` or HA app masked `bmc_api_key`. All public responses use `CONFIG.public()`, not a dataclass dump. Header `X-Commute-Refresh: manual` is required for anonymous upstream refresh; missing header fails closed as automatic. Auth errors must not fall back to anonymous. Static imports use the same server-only access config; no key is sent to iRail.
+Never request or embed the real subscription key in chat, HTML, public JSON, data files, URL parameters or logs. Use `BMC_API_KEY` / `BMC_API_KEY_FILE` or the sibling secrets file / browser storage. All public responses use `CONFIG.public()`, not a dataclass dump. Header `X-Commute-Refresh: manual` is required for anonymous upstream refresh; missing header fails closed as automatic. Auth errors must not fall back to anonymous. Static imports use the same server-only access config; no key is sent to iRail.
 
 
 ## De Lijn no-data diagnosis (2026-09-07)

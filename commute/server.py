@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from urllib.parse import urlsplit, parse_qs
 from datetime import datetime, timezone
-import argparse, gzip, json, time, threading, os, shutil, subprocess
+import argparse, gzip, json, time, os, threading
 import rail
 import delijn_live
 from mobility_config import load_config
@@ -24,7 +24,6 @@ STATE_DIR = Path(os.environ.get('COMMUTE_STATE_DIR', str(ROOT / 'data')))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 STATE_PATH = STATE_DIR / 'live-state.json'
 QUOTA_PATH = STATE_DIR / 'quota.json'
-API_SLOTS = threading.BoundedSemaphore(2)
 TTL = 60
 STALE_AFTER = 120
 LOCK = threading.Lock()
@@ -122,8 +121,15 @@ def normalize(op, body, fetched_at):
 
 
 def fetch_provider(op):
+    # The De Lijn stop API is a bonus over the BMC feed: a wrong, empty or
+    # rejected De Lijn value must never take the corridor's live data down,
+    # so its failure falls through to the BMC GTFS-RT attempt with the BMC key.
+    stop_failure = None
     if op == 'delijn' and DL_CONFIG.api_key:
-        return op, delijn_live.fetch(DL_CONFIG, DL_STOPS)
+        stop_data = delijn_live.fetch(DL_CONFIG, DL_STOPS)
+        if stop_data.get('ok'):
+            return op, stop_data
+        stop_failure = {'kind': stop_data.get('errorKind'), 'message': stop_data.get('error')}
     try:
         request = CONFIG.request(FEED_PATHS[op])
         with urlopen(request, timeout=18) as response:
@@ -139,7 +145,10 @@ def fetch_provider(op):
             feed = gtfs_realtime_pb2.FeedMessage()
             feed.ParseFromString(raw)
             body = MessageToDict(feed, use_integers_for_enums=True)
-        return op, normalize(op, body, time.time())
+        result = normalize(op, body, time.time())
+        if stop_failure:
+            result['stopApiFallback'] = stop_failure
+        return op, result
     except HTTPError as exc:
         body = exc.read(2048).decode(errors='replace').lower()
         if exc.code == 429 or 'quota' in body:
@@ -154,6 +163,10 @@ def fetch_provider(op):
     except Exception:
         kind = 'network'
         message = 'Live feed temporarily unavailable; using the timetable.'
+    if op == 'delijn' and stop_failure:
+        # The stop API was attempted first: surface its more actionable error.
+        return op, {'ok': False, 'kind': 'stop-api', 'attemptedAt': time.time(),
+                    'error': stop_failure['message'], 'errorKind': stop_failure['kind']}
     return op, {'ok': False, 'attemptedAt': time.time(), 'error': message, 'errorKind': kind}
 
 
@@ -207,6 +220,11 @@ def get_live(refresh=False, automatic=False):
                 STATE['delijnSource'] = public_access()['delijnSource']
                 with ThreadPoolExecutor(max_workers=2) as pool:
                     results = list(pool.map(fetch_provider, ['stib', 'delijn']))
+                # A stop-API call that fell back to the BMC GTFS-RT feed spent
+                # one extra Belgian Mobility call beyond the planned bmc_cost.
+                if any(op == 'delijn' and result.get('stopApiFallback') for op, result in results):
+                    calls.append(now)
+                    save_json(QUOTA_PATH, QUOTA)
                 for op, result in results:
                     STATE.setdefault('providers', {})[op] = result
                 save_json(STATE_PATH, STATE)
@@ -221,43 +239,6 @@ def get_live(refresh=False, automatic=False):
                           'delijnStop':{'used':len(dl_calls),'limit':DL_CONFIG.daily_limit,'callsPerRefresh':1} if DL_CONFIG.api_key else None,
                           'nextRefreshAt': last_attempt + TTL},
                 'notice': message}
-
-
-def validate_api_query(query, train=False):
-    if train or 'date' in query or 'time' in query:
-        rail.validate_query(query.get('date'), query.get('time'))
-    allowed = {'direction': {'toBN','toTNT'}, 'walking': {'0','1'}, 'shuttle': {'0','1'},
-               'operator': {'all','shuttle','stib','delijn'}, 'stop': {'all','shuttle','picard','suzan','thurn'}}
-    for key, values in allowed.items():
-        if key in query and query[key] not in values:
-            raise ValueError('Invalid ' + key)
-    for key, lower, upper in [('horizon',30,2880), ('limit',1,20), ('margin',0,60)]:
-        if key in query:
-            try:
-                value = int(query[key])
-            except ValueError:
-                raise ValueError(key + ' must be an integer') from None
-            if not lower <= value <= upper:
-                raise ValueError(f'{key} must be between {lower} and {upper}')
-
-
-def engine_response(query, train=False):
-    validate_api_query(query, train)
-    node = shutil.which('node')
-    if not node:
-        return {'ok': False, 'error': 'The entities API requires Node.js 20+. The browser dashboard still works.'}, 503
-    if not API_SLOTS.acquire(timeout=1):
-        return {'ok': False, 'error': 'Planner busy; retry shortly.'}, 503
-    try:
-        # Read-only: polling for HA entities MUST NOT spend upstream API quota.
-        payload = {'query': query, 'action': 'train' if train else 'next', 'now': time.time(), 'live': get_live(False)}
-        run = subprocess.run([node, str(ROOT / 'api_cli.js')], input=json.dumps(payload),
-                             capture_output=True, text=True, cwd=ROOT, timeout=8, check=True)
-        return json.loads(run.stdout), 200
-    except (subprocess.SubprocessError, ValueError):
-        return {'ok': False, 'error': 'Could not calculate departures. Check the local timetable and server logs.'}, 500
-    finally:
-        API_SLOTS.release()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -286,22 +267,19 @@ class Handler(BaseHTTPRequestHandler):
             html = html.replace('window.COMMUTE_SERVER = false;', 'window.COMMUTE_SERVER = true;')
             return self.send(html, 'text/html; charset=utf-8')
         if path == '/api/health':
-            return self.send(json.dumps({'ok': True, 'app': 'Commute dashboard', 'timezone': 'Europe/Brussels', 'entitiesApiAvailable': bool(shutil.which('node')), 'access': public_access()}))
+            return self.send(json.dumps({'ok': True, 'app': 'Commute dashboard', 'timezone': 'Europe/Brussels', 'access': public_access()}))
         if path == '/api/live':
             return self.send(json.dumps(get_live(refresh=False)))
-        if path in ('/api/next', '/api/plan-train', '/api/trains'):
+        if path == '/api/trains':
             try:
                 query = {key: values[-1] for key, values in parse_qs(urlsplit(self.path).query).items()}
-                if path == '/api/trains':
-                    data, status = rail.get_board(query.get('date'), query.get('time'))
-                else:
-                    data, status = engine_response(query, train=path == '/api/plan-train')
+                data, status = rail.get_board(query.get('date'), query.get('time'))
             except (ValueError, TypeError) as exc:
                 data, status = {'ok': False, 'error': str(exc)}, 400
             return self.send(json.dumps(data), status=status)
         docs = {'/docs/AGENTS.md': ROOT / 'AGENTS.md', '/docs/README.md': ROOT / 'README.md',
                 **{'/docs/' + name: ROOT / 'docs' / name for name in
-                   ['ARCHITECTURE.md','OPERATIONS.md','HOME_ASSISTANT.md','TRAIN_PLANNING.md','API.md','API_ACCESS.md','DELIJN_REALTIME.md','VERIFICATION.md']}}
+                   ['ARCHITECTURE.md','OPERATIONS.md','TRAIN_PLANNING.md','API.md','API_ACCESS.md','DELIJN_REALTIME.md','VERIFICATION.md']}}
         if path in docs and docs[path].exists():
             return self.send(docs[path].read_text(), 'text/plain; charset=utf-8')
         if path == '/shuttle.pdf':

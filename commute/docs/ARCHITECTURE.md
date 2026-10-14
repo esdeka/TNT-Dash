@@ -14,7 +14,7 @@ Original shuttle PDF + explicit user rules ─── static/engine.js
   STIB WaitingTimes ─┐                │
   De Lijn GTFS-RT ───┴─ server.py cache/normalize ── /api/live[ /refresh ]
 
-Home Assistant ── /api/next ── server.py ── api_cli.js ── SAME engine.js
+browser ── /api/trains ── server.py ── rail.py; the dashboard computes itself with the SAME engine.js
                      cached live state + GTFS; zero upstream requests
 
 Train selection ── /api/trains ── rail.py ── iRail Brussels North liveboard
@@ -75,7 +75,6 @@ With a configured BMC key, opening/returning starts a visible-page session: chec
 
 Shared bus cache: at least 60 seconds. Per-mode app limit: **anonymous 80/day; registered default 10,000/day; 4/minute for either**. Mode buckets preserve legacy usage. One two-provider refresh consumes two requests. Quota and live cache persist in the state directory; failed attempts also consume quota. The BMC anonymous terms describe 100 requests/day and 10/minute; the lower application limits reserve headroom for GTFS downloads. Other applications on the same public IP may also consume the provider allowance.
 
-`GET /api/next` and `GET /api/plan-train` do not refresh those APIs. They read the shared cache and recalculate against the current clock. This makes normal HA sensor polling inexpensive and quota-safe, but does not provide continuously fresh live predictions by itself.
 
 ## Train board
 
@@ -115,8 +114,6 @@ Source documentation is exposed on a small explicit `/docs/...` allowlist. There
 - Belgian Mobility catalog: https://data.belgianmobility.io/en/data.html
 - Public-feed terms: https://data.belgianmobility.io/en/terms.html
 - iRail API, caching and request limits: https://docs.irail.be/
-- HA REST integration: https://www.home-assistant.io/integrations/rest/
-- HA OS local app development: https://developers.home-assistant.io/docs/apps/tutorial/
 
 
 ## Temporary route changes: R15 example

@@ -5,7 +5,6 @@
 The supported De Lijn stop API is now implemented. It requires a **De Lijn Open Data subscription key**, separate from the Belgian Mobility (BMC) key.
 
 - Subscribe to the **Open Data Free** product at https://data.delijn.be/products . It includes real-time information for stops.
-- In the HA OS app Configuration, enter the key in masked **`delijn_api_key`**, then restart the app.
 - For a normal server, configure **`DELIJN_API_KEY`** or **`DELIJN_API_KEY_FILE`** privately. Default app budget is `DELIJN_DAILY_LIMIT=10000`, within the assigned subscription quota.
 - Never paste the key into chat, HTML, a URL or a source file. The request key is an unredirected `Ocp-Apim-Subscription-Key` header, not forwarded on redirects.
 
@@ -72,7 +71,7 @@ The user's Picard screenshot was correct. On 7 September, operator stop data rep
 
 1. Restart the app and open `/api/health`: `access.delijnStopKeyConfigured` should be true and `delijnSource` should be `stop-api`. This proves configuration presence, not successful authentication.
 2. Press manual Refresh. In `/api/live`, check `providers.delijn.ok`, `kind: "stop-api"`, `recordCount`, `liveRecordCount` and any error.
-3. A matched forecast in `/api/next` has `live_source: "delijn-stop-api"`, operator-paired schedule/actual values and signed delay. If a destination forecast is absent, its arrival is explicitly estimated.
+3. A matched forecast in the page (and in `GET /api/live`-derived snapshots) carries `live_source: "delijn-stop-api"` on its row, operator-paired schedule/actual values and signed delay. If a destination forecast is absent, its arrival is explicitly estimated.
 4. If access is rejected, confirm you subscribed to the Free Open Data product containing stop real-time, not just the GTFS download product. Do not paste the key into chat.
 
 

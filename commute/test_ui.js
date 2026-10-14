@@ -67,7 +67,7 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  await page.locator('#to-bn').click();await controls();await page.locator('#stop-select').selectOption('all');await closeControls();
  // Timeline view: one stop column each, chronological, with a TNT-start Picard drop.
  await page.locator('#view-timeline').click();
- assert.deepEqual(await page.locator('.timeline-col').evaluateAll(els=>els.map(e=>e.dataset.group)),['shuttle','picard','suzan','thurn']);
+ assert.deepEqual(await page.locator('.timeline-col').evaluateAll(els=>els.map(e=>e.dataset.group)),['shuttle','suzan','picard','thurn']);
  assert.ok(await page.locator('.timeline-col[data-group="shuttle"] .timeline-event').count()>0);
  assert.ok((await page.evaluate(()=>location.search)).includes('view=timeline'));
  // One shared vertical clock scale: ruler ticks, spaced gridlines, monotonic lanes.
@@ -81,15 +81,23 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  // earlier one (allowing up to 12 px of stagger overlap between columns),
  // simultaneous departures share one height, nothing overlaps inside a
  // column, and cards never sit above their proportional clock position.
- const seq=await page.evaluate(()=>[...document.querySelectorAll('.tl-board .timeline-event')].map(e=>({dep:+e.dataset.dep,id:e.dataset.id,col:e.closest('.timeline-col').dataset.group,top:parseFloat(e.style.top),h:e.getBoundingClientRect().height})).sort((a,b)=>a.dep-b.dep||a.id.localeCompare(b.id)));
- for(let i=1;i<seq.length;i++){if(Math.floor(seq[i].dep/60)===Math.floor(seq[i-1].dep/60))continue;assert.ok(seq[i].top>=seq[i-1].top+seq[i-1].h-12-1.05,'no inversion: later card within 12 px stagger of the previous bottom');}
+ // Sorting/inversion checks use the effective clock time (Picard twin cards
+ // plot at their Suzan tick; data-eff is that effective time).
+ const seq=await page.evaluate(()=>[...document.querySelectorAll('.tl-board .timeline-event')].map(e=>({dep:+e.dataset.dep,eff:+e.dataset.eff,id:e.dataset.id,col:e.closest('.timeline-col').dataset.group,top:parseFloat(e.style.top),h:e.getBoundingClientRect().height})).sort((a,b)=>a.eff-b.eff||a.id.localeCompare(b.id)));
+ for(let i=1;i<seq.length;i++){if(Math.floor(seq[i].eff/60)===Math.floor(seq[i-1].eff/60))continue;assert.ok(seq[i].top>=seq[i-1].top+seq[i-1].h-12-1.05,'no inversion: later card within 12 px stagger of the previous bottom');}
  const byCol=new Map();
  for(const e of seq){const b=byCol.get(e.col);if(b!=null)assert.ok(e.top>=b+1.9,'no overlap inside a column');byCol.set(e.col,e.top+e.h);}
- const sameMinute=seq.map((e,i)=>[e,i]).filter(([e,i])=>i>0&&e.col!==seq[i-1].col&&Math.floor(e.dep/60)===Math.floor(seq[i-1].dep/60));
+ const sameMinute=seq.map((e,i)=>[e,i]).filter(([e,i])=>i>0&&e.col!==seq[i-1].col&&Math.floor(e.eff/60)===Math.floor(seq[i-1].eff/60));
  assert.ok(sameMinute.length>0,'fixture has simultaneous departures across columns');
  assert.ok(sameMinute.some(([e,i])=>Math.abs(e.top-seq[i-1].top)<=0.5),'simultaneous departures share one height');
- const ppm=(lineTops[1]-lineTops[0])/15,t0=Math.floor(seq[0].dep/60)*60;
- assert.ok(seq.every(e=>e.top>=((e.dep-t0)/60)*ppm-0.75),'cards never sit above their clock position');
+ const ppm=(lineTops[1]-lineTops[0])/15,t0=Math.floor(Math.min(...seq.map(e=>e.dep))/60)*60;
+ assert.ok(seq.every(e=>e.top>=((e.eff-t0)/60)*ppm-0.75),'cards never sit above their clock position');
+ // Horizontal twin alignment: every linked Picard/Suzan pair sits at exactly
+ // the same height and its connector is a straight horizontal line.
+ const pairCheck=await page.evaluate(()=>[...document.querySelectorAll('.tl-links path')].map(p=>{const a=p.closest('.tl-board').querySelector('.timeline-event[data-id="'+CSS.escape(p.dataset.a)+'"]'),b=p.closest('.tl-board').querySelector('.timeline-event[data-id="'+CSS.escape(p.dataset.b)+'"]');return{dy:Math.abs(parseFloat(a.style.top)-parseFloat(b.style.top)),d:p.getAttribute('d')};}));
+ assert.ok(pairCheck.length>0,'timeline has linked twin pairs');
+ for(const pr of pairCheck){assert.ok(pr.dy<=0.5,'Picard twin card exactly level with its Suzan card');
+  const nums=pr.d.match(/[\d.]+/g).map(Number);assert.ok(Math.abs(nums[1]-nums[7])<=0.5,'twin connector is horizontal');}
  const times=await page.locator('.timeline-col[data-group="suzan"] .timeline-event > strong').evaluateAll(els=>els.map(e=>e.textContent));
  assert.ok(times.length>1);assert.deepEqual(times,[...times].sort());
  // Single-line cards: no destination inside timeline events.
@@ -123,7 +131,7 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  }
  await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});await page.screenshot({path:path.join(cache,'glance-home-mobile.png'),fullPage:true});
  await page.locator('#to-home').click();await page.screenshot({path:path.join(cache,'glance-return-mobile.png'),fullPage:true});await page.locator('#to-bn').click();
- for(const tab of ['method','shuttle','walking','stops','sources','keys','technical']){
+ for(const tab of ['method','shuttle','walking','stops','sources','keys','version','technical']){
   await page.locator('.reference-button').click();await page.locator(`#dialog-tabs [data-tab="${tab}"]`).click();assert.ok((await page.locator('#dialog-content').innerText()).length>100);await page.keyboard.press('Escape');
  }
  await page.locator('[data-action="best"]').click();assert.match(await page.locator('#dialog-content').innerText(),/DATA BASIS/);assert.match(await page.locator('.operator-page-link').getAttribute('href'),/direction=f/);await page.keyboard.press('Escape');
@@ -219,7 +227,7 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  const irailFix={timestamp:String(now),stationinfo:{id:'BE.NMBS.008812005',name:'Brussel-Noord'},departures:{departure:[{time:String(tdep),delay:'0',vehicle:'BE.NMBS.IC 01',vehicleinfo:{shortname:'IC 01'},station:'Teststad',stationinfo:{id:'BE.NMBS.008892007'},platform:'4',platforminfo:{normal:'1'},canceled:'0',left:'0',departureConnection:'fixture-1@'+tdep},{time:String(tdep+1200),delay:'120',vehicle:'BE.NMBS.S 11',vehicleinfo:{shortname:'S 11'},station:'Anderstad',stationinfo:{id:'BE.NMBS.008893304'},platform:'6',platforminfo:{normal:'1'},canceled:'0',left:'0',departureConnection:'fixture-2@'+(tdep+1200)}]}};
  let stibCalls=0,dlCalls=0,gtfsCalls=0,irailCalls=0;
  await xp.route('https://api-management-*/api/datasets/stibmivb/rt/WaitingTimes',r=>{stibCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(stibFix)})});
- await xp.route('https://api-management-*/api/gtfs/feed/delijn/rt/trip-update',r=>{gtfsCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({header:{gtfsRealtimeVersion:'2.0',incrementality:0,timestamp:now},entity:[{tripUpdate:{trip:{tripId:dr.tripId,startDate:'20260907',scheduleRelationship:0},timestamp:now,stopTimeUpdate:[{stopId:dr.origin.id,stopSequence:1,departure:{time:dr.scheduledDeparture+360},scheduleRelationship:0},{stopId:dr.destination.id,stopSequence:2,arrival:{time:dr.scheduledArrival+420},scheduleRelationship:0}]}}]})})});
+ await xp.route('https://api-management-*/api/gtfs/feed/delijn/rt/trip-update',r=>{gtfsCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({header:{gtfsRealtimeVersion:'2.0',incrementality:0,timestamp:now},entity:[{tripUpdate:{trip:{tripId:dr.tripId,startDate:'20260907',scheduleRelationship:0},timestamp:now,stopTimeUpdate:[{stopId:dr.origin.id,stopSequence:dr.originSequence,departure:{time:dr.scheduledDeparture+360},scheduleRelationship:0},{stopId:dr.destination.id,stopSequence:dr.destinationSequence,arrival:{time:dr.scheduledArrival+420},scheduleRelationship:0}]}}]})})});
  await xp.route('https://api.delijn.be/**',r=>{dlCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dlStopFix)})});
  await xp.route('https://api.irail.be/**',r=>{irailCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(irailFix)})});
  await xp.goto('file://'+path.join(__dirname,'Dashboard.html'),{waitUntil:'networkidle'});
@@ -257,6 +265,27 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  assert.equal(sibStatus.bmcSource,'secrets file','sibling key file wins the source chain');assert.equal(sibStatus.delijnSource,'secrets file');
  assert.equal(sibStatus.bmc,'sib-…45','keys masked in status');
  await sib.close();
+ // Multi-file static site: site/index.html + assets + js, loaded from file://.
+ // Same template and code, data as window globals instead of inlined JSON tags.
+ const staticSite=path.join(cache,'static-site');fs.cpSync(path.join(__dirname,'site'),staticSite,{recursive:true});
+ fs.writeFileSync(path.join(staticSite,'Dashboard-secrets.js'),'window.COMMUTE_SECRETS={bmc:"sib-bmc-key-12345",delijn:""};');
+ const stc=await browser.newContext({viewport:{width:390,height:844}}),stp=await stc.newPage();stp.on('pageerror',e=>errors.push(e.message));
+ await stp.addInitScript(watchStatus);
+ await stp.route('https://api-management-*/**',r=>r.abort());await stp.route('https://api.delijn.be/**',r=>r.abort());await stp.route('https://api.irail.be/**',r=>r.abort());
+ await stp.goto('file://'+path.join(staticSite,'index.html'),{waitUntil:'networkidle'});
+ assert.equal(await stp.evaluate(()=>!!window.__TIMETABLE__&&!!window.__WALKING__&&!!document.querySelector('link[href="assets/commute.css"]')&&!document.getElementById('timetable-data')),true,'static shape: window globals + external css, no inlined data');
+ assert.equal(await stp.evaluate(()=>[...document.images].every(i=>i.complete&&i.naturalWidth>0)),true,'logo files load from assets/');
+ assert.equal((await stp.evaluate(()=>window.CommuteLiveDirect.keyStatus())).bmcSource,'secrets file','sibling secrets also work in site/');
+ assert.match((await stp.evaluate(()=>window.__statusLog))[0]||'',/Standalone · direct operator APIs/,'static site announces direct access from the first paint');
+ await stp.locator('#planner summary').click();await stp.locator('#plan-button').click();await stp.locator('#plan-date').fill('2026-09-07');await stp.locator('#plan-time').fill('08:00');await stp.locator('#local-clock').click();
+ assert.match(await stp.locator('#recommendation').innerText(),/Picard/,'planner works from js/data files');
+ await stp.locator('.reference-button').click();
+ for(const t of ['shuttle','sources','method','stops','walking','keys','version','technical']){await stp.locator('#dialog-tabs [data-tab="'+t+'"]').click();assert.ok((await stp.locator('#dialog-content').innerText()).length>40,'reference tab has content: '+t);}
+ await stp.locator('#dialog-tabs [data-tab="version"]').click();
+ assert.match(await stp.locator('#dialog-content').innerText(),/v1\.5\.0/,'version tab shows the changelog');
+ await stp.locator('#dialog-tabs [data-tab="shuttle"]').click();
+ assert.equal(await stp.evaluate(()=>[...document.querySelectorAll('#dialog-content a')].some(a=>a.getAttribute('href')==='assets/TT-SHUTTLE-SCHEDULE.pdf')),true,'PDF link points at the real file');
+ await stc.close();
  // Manual browser entry: Reference → API keys stores in localStorage (overrides every source) and clears again.
  await xp.locator('.reference-button').click();await xp.locator('#dialog-tabs [data-tab="keys"]').click();
  assert.match(await xp.locator('#dialog-content').innerText(),/Current sources/);
@@ -266,6 +295,25 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  assert.match(await xp.locator('#dialog-content').innerText(),/browser storage/,'form re-renders the new source');
  await xp.locator('[data-action="clear-keys"]').click();
  await xp.waitForFunction(()=>window.CommuteLiveDirect.keyStatus().bmcSource!=='browser storage');
+ await xp.keyboard.press('Escape');
+ // A rejected De Lijn stop-API value must not take De Lijn live down: the
+ // browser falls back to the BMC GTFS-RT feed with the same BMC key, honestly.
+ await xp.unroute('https://api.delijn.be/**');
+ await xp.route('https://api.delijn.be/**',r=>r.fulfill({status:401,contentType:'application/json',body:'denied'}));
+ await xp.locator('.reference-button').click();await xp.locator('#dialog-tabs [data-tab="keys"]').click();
+ await xp.locator('#key-bmc').fill('manual-bmc-key-999999');await xp.locator('#key-delijn').fill('wrong-delijn-key');await xp.locator('[data-action="save-keys"]').click();
+ await xp.waitForFunction(()=>window.CommuteLiveDirect.keyStatus().delijnSource==='browser storage');
+ await xp.keyboard.press('Escape');
+ await xp.evaluate(()=>{const q=JSON.parse(localStorage.getItem('commute.direct.quota.v3')||'{}');q.buckets={registered:{calls:[]},delijn_stop:{calls:[]}};localStorage.setItem('commute.direct.quota.v3',JSON.stringify(q));const s=JSON.parse(localStorage.getItem('commute.direct.state.v3'));s.lastAttempt-=300;localStorage.setItem('commute.direct.state.v3',JSON.stringify(s));});
+ await xp.locator('#refresh-button').click();
+ await xp.waitForFunction(()=>{const p=CommuteDashboard.getSnapshot().live?.providers?.delijn;return p?.ok&&p.stopApiFallback?.kind==='authentication';});
+ assert.equal(await xp.evaluate(()=>CommuteDashboard.getSnapshot().rows.some(r=>r.delay===360)),true,'De Lijn live forecasts survive the rejected stop-API key via the BMC feed');
+ assert.match(await xp.locator('#live-status').textContent(),/rejected · live via the BMC feed/,'honest pill when the stop key is rejected but the BMC feed provides data');
+ const quotaAfter=await xp.evaluate(()=>{const q=JSON.parse(localStorage.getItem('commute.direct.quota.v3'));return{bmc:q.buckets.registered.calls.length,dl:q.buckets.delijn_stop.calls.length};});
+ assert.equal(quotaAfter.dl,1,'the one stop-API attempt is charged');
+ assert.equal(quotaAfter.bmc,2,'STIB + fallback GTFS-RT calls are charged');
+ await xp.locator('.reference-button').click();await xp.locator('#dialog-tabs [data-tab="keys"]').click();await xp.locator('[data-action="clear-keys"]').click();
+ await xp.waitForFunction(()=>window.CommuteLiveDirect.keyStatus().delijnSource!=='browser storage');
  await xp.keyboard.press('Escape');
  await xc.close();console.log('✓ Serverless standalone: direct STIB/De Lijn/iRail access, shared cache, quotas, direct train board, sibling secrets file and browser-stored keys');
  // The opaque-origin sandbox must keep working: storage failures are cached silently.

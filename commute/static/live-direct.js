@@ -57,7 +57,7 @@ window.CommuteLiveDirect = (() => {
   };
   const STATE_KEY = 'commute.direct.state.v3', QUOTA_KEY = 'commute.direct.quota.v3', TRAIN_KEY = 'commute.direct.trains.v1';
   let dataCache = null;
-  const DATA = () => { if (!dataCache) dataCache = JSON.parse(document.getElementById('timetable-data').textContent); return dataCache; };
+  const DATA = () => { if (!dataCache) dataCache = window.__TIMETABLE__ || JSON.parse(document.getElementById('timetable-data').textContent); return dataCache; };
   const nowSeconds = () => Date.now() / 1000;
 
   function accessInfo() {
@@ -205,6 +205,7 @@ window.CommuteLiveDirect = (() => {
   }
   async function fetchProvider(op) {
     const K = resolveKeys(), delijnKey = K.delijn;
+    let stopFailure = null;
     if (op === 'delijn' && delijnKey) {
       try {
         const codes = [...new Set(Object.keys(DATA().operators.delijn.stops).map(s => s.replace('gs:delijn:', '')))].sort();
@@ -213,18 +214,24 @@ window.CommuteLiveDirect = (() => {
         const body = await fetchJson(DL_BASE + 'haltes/lijst/' + keys + '/real-time?maxAantalDoorkomsten=50', { 'Ocp-Apim-Subscription-Key': delijnKey }, 6 * 1024 * 1024);
         return [op, normalizeDelijnStop(body, nowSeconds())];
       } catch (e) {
+        // The stop API is a bonus over the BMC feed: a wrong, empty or rejected
+        // De Lijn value must never take the corridor's live data down, so the
+        // BMC GTFS-RT attempt below still runs with the same BMC key.
         const kind = e.status === 401 || e.status === 403 ? 'authentication' : e.status === 429 ? 'quota' : e.status ? 'upstream' : 'network';
         const message = kind === 'authentication' ? 'De Lijn stop API rejected access; check the separate De Lijn subscription key.'
           : kind === 'network' ? 'De Lijn stop real-time unavailable or response not usable; timetable fallback.'
           : 'De Lijn stop real-time unavailable; timetable fallback.';
-        return [op, { ok: false, kind: 'stop-api', attemptedAt: nowSeconds(), errorKind: kind, error: message }];
+        stopFailure = { kind, message };
       }
     }
     try {
       const headers = K.bmc ? { 'Ocp-Apim-Subscription-Key': K.bmc } : {};
       const body = await fetchJson(endpointFor(K, op), headers);
-      return [op, op === 'stib' ? normalizeStib(body, nowSeconds()) : normalizeDelijnGtfs(body, nowSeconds())];
+      const data = op === 'stib' ? normalizeStib(body, nowSeconds()) : normalizeDelijnGtfs(body, nowSeconds());
+      if (stopFailure) data.stopApiFallback = stopFailure;
+      return [op, data];
     } catch (e) {
+      if (op === 'delijn' && stopFailure) return [op, { ok: false, kind: 'stop-api', attemptedAt: nowSeconds(), errorKind: stopFailure.kind, error: stopFailure.message }];
       let kind, message;
       if (e.status === 429 || (e.body || '').includes('quota')) { kind = 'quota'; message = 'Operator quota reached; using the timetable.'; }
       else if ((e.status === 401 || e.status === 403) && K.bmc) { kind = 'authentication'; message = 'Registered API access was rejected; check the subscription/key. No anonymous fallback was attempted.'; }
@@ -272,6 +279,9 @@ window.CommuteLiveDirect = (() => {
       if (K.delijn) dlCalls.push(now);
       writeQuota(quota);
       const results = await Promise.all([fetchProvider('stib'), fetchProvider('delijn')]);
+      // A stopped stop-API call that falls back to the BMC GTFS-RT feed spends
+      // one extra Belgian Mobility call beyond the planned bmcCost — charge it.
+      if (results.some(([op, result]) => op === 'delijn' && result.stopApiFallback)) { calls.push(now); writeQuota(quota); }
       for (const [op, result] of results) (state.providers = state.providers || {})[op] = result;
       state.lastAttempt = now; state.accessMode = mode; state.delijnSource = accessInfo().delijnSource;
       writeState(state); lastAttempt = now;

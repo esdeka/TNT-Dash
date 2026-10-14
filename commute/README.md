@@ -4,7 +4,7 @@ Compares direct staff-shuttle, STIB/MIVB and De Lijn connections between the Tou
 
 ## Run it
 
-Requirements: **Python 3.10+**. **Node.js 20+** is required for the Home Assistant / JSON planning API and engine tests; the browser-only dashboard does not need Node at runtime.
+Requirements: **Python 3.10+** only. **Node.js 20+** is needed for the test suites; nothing at runtime.
 
 ```bash
 python build.py
@@ -23,7 +23,11 @@ The portal currently supplies JSON. If it switches to protobuf and this optional
 
 **`Dashboard.html` is a self-contained snapshot.** It includes the GTFS subset, walks, shuttle rules, original PDF, font and code. It works without an internet connection, including manual train-time planning — and with connectivity it also runs **entirely serverless**: the page itself calls the STIB, De Lijn and iRail APIs directly (all four gateways were verified to send `Access-Control-Allow-Origin: *`; iRail mirrors the caller's origin, which also covers `file://`).
 
-**Run without a web server (any static host or `file://`):** `python3 build.py` produces a key-free `Dashboard.html` plus, when your private key files are referenced in the environment, a git-ignored `Dashboard-secrets.js` next to it. Upload **both files** to a host only you can reach — the page loads the secrets file with a plain script tag (this also works from `file://`). Rotating keys never requires a rebuild: just edit `Dashboard-secrets.js`. Key precedence, strongest first: keys typed into **Reference → API keys** (browser localStorage) → the secrets file → any `--embed-keys` build values. Without keys the page uses the anonymous gateways on manual Refresh. With a key, auto refresh (every minute while visible, up to 20 minutes per session), quota counters and the 60-second shared cache behave exactly like server mode, persisted in `localStorage` instead of `data/`. `build.py --embed-keys` remains as the legacy single-file alternative; `--no-embed-keys` also removes the real secrets file for commit-safe artifacts. Browser limitations, kept honest: the De Lijn GTFS-RT fallback is JSON-only (the optional protobuf path is Python-only, but the De Lijn stop-API key avoids that feed anyway), and the Home Assistant entities API (`/api/next`, `/api/plan-train`) remains available only in server mode.
+**Run without a web server (any static host or `file://`):** `python3 build.py` produces a key-free `Dashboard.html` plus, when your private key files are referenced in the environment, a git-ignored `Dashboard-secrets.js` next to it. Upload **both files** to a host only you can reach — the page loads the secrets file with a plain script tag (this also works from `file://`). Rotating keys never requires a rebuild: just edit `Dashboard-secrets.js`. Key precedence, strongest first: keys typed into **Reference → API keys** (browser localStorage) → the secrets file → any `--embed-keys` build values. Without keys the page uses the anonymous gateways on manual Refresh. With a key, auto refresh (every minute while visible, up to 20 minutes per session), quota counters and the 60-second shared cache behave exactly like server mode, persisted in `localStorage` instead of `data/`. `build.py --embed-keys` remains as the legacy single-file alternative; `--no-embed-keys` also removes the real secrets file for commit-safe artifacts. Browser limitations, kept honest: the De Lijn GTFS-RT fallback is JSON-only (the optional protobuf path is Python-only, but the De Lijn stop-API key avoids that feed anyway).
+
+**Multi-file static site:** the same build also writes `site/` — a standard static-website layout: `index.html` plus `assets/commute.css`, the Manrope font as a real `.woff2` file, the operator logos as PNGs, the shuttle PDF at `assets/TT-SHUTTLE-SCHEDULE.pdf`, and `js/` with the four application scripts plus `js/data-timetable.js` / `js/data-walking.js` (the schedule ships as `window` globals so `file://` keeps working — plain `fetch` of a JSON file does not). It is the same template, code and behaviour as `Dashboard.html`, just not inlined; the tiny HTML no longer embeds megabytes of data. `site/` never contains keys: copy your git-ignored `Dashboard-secrets.js` into it exactly as with the single file (the build does this automatically when your key files are configured), or enter keys per device in Reference → API keys. Deploy the whole folder to any static host.
+
+**Current deployment note (8 September 2026):** everything runs on the **single Belgian Mobility Marketplace key** — the server, the `file://` page and `site/` all fetch De Lijn real-time through the BMC GTFS-RT feed with that same key (2 BMC calls per refresh, quota accounted). A separate De Lijn stop-API key stays supported for more detailed paired stop forecasts — note it requires its own delijn.be product subscription (the BMC key is not valid there). If a configured De Lijn value is rejected or wrong, nothing breaks: the dashboard warns visibly and keeps De Lijn live via the BMC feed, charging the extra gateway call honestly.
 
 ## Quick-glance use
 
@@ -105,23 +109,6 @@ For a targeted update, `python refresh_schedules.py --operators stib` downloads 
 
 A server restart is required after changing GTFS because live-route filtering is loaded at startup. Existing HTML copies must be rebuilt/redownloaded. Detailed safe update and deployment procedures: [Operations](docs/OPERATIONS.md).
 
-## Home Assistant OS
-
-The source includes:
-
-- Read-only **`GET /api/next`**: recommendation, next departures per operator, leave-home timestamps, walking times and live-data freshness.
-- **`GET /api/plan-train`**: the same backward planner as the browser.
-- A **local HA OS app package builder** and REST/template sensor YAML.
-
-Polling `/api/next` makes **zero upstream requests**. It uses the saved timetable and any fresh live cache. Live entity updates require a separate, explicit `/api/live/refresh` call; do not automate this every minute all day under the public quota.
-
-Build the HA OS archive with:
-
-```bash
-python package.py
-```
-
-Follow [Home Assistant setup](docs/HOME_ASSISTANT.md). No connection has been made to your HA server. Use a locally deployed service, **not the temporary Arena preview**, for persistent entities. The service has no built-in authentication: keep it on a trusted LAN or behind authenticated remote access.
 
 ## Documentation / other agents
 
@@ -130,17 +117,16 @@ Follow [Home Assistant setup](docs/HOME_ASSISTANT.md). No connection has been ma
 - [Architecture & data flows](docs/ARCHITECTURE.md)
 - [Operations, updates & packaging](docs/OPERATIONS.md)
 - [HTTP API contract](docs/API.md)
-- [Home Assistant OS setup](docs/HOME_ASSISTANT.md)
 - [Train-planning semantics](docs/TRAIN_PLANNING.md)
 - [Verification & remaining limits](docs/VERIFICATION.md)
 
-The browser and JSON API use **one shared calculation engine**, `static/engine.js`. Do not duplicate its logic in Python or HA templates.
+The browser and the server use **one shared calculation engine**, `static/engine.js`. Do not duplicate its logic in Python.
 
 ## Tests
 
 ```bash
 node test_engine.js
-python -m unittest -v test_access.py test_api.py test_ha_config.py test_delijn_stop.py
+python -m unittest -v test_access.py test_api.py test_delijn_stop.py
 # With the server running and Playwright / Chromium installed:
 node test_ui.js
 ```

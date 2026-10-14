@@ -11,17 +11,6 @@ The registered default leaves headroom below the currently advertised indicative
 
 **No key means no automatic upstream calls on load, tab return, mode changes or timers.** The page may make `GET /api/live` to read existing cached predictions and access capabilities; that request does not contact either operator. A fresh cache from a previous manual check may still be displayed.
 
-## Home Assistant OS
-
-In the **Commute dashboard app → Configuration**, set:
-
-- `bmc_api_key`: your subscription key, in the masked password field. Leave empty for anonymous/manual mode unless you configure a key by environment/file instead.
-- `bmc_auth_daily_limit`: default `10000`; lower it if your assigned quota is lower.
-- `bmc_auth_base`: normally empty. Set only if your subscription documentation specifies a different HTTPS API base.
-
-Restart the app after changing configuration. App options are stored privately by HA OS under `/data/options.json`; protect backups. The key is passed into the server environment before server startup or an explicitly requested GTFS import. It is never placed in the built HTML, walking/timetable data, API responses, logs or distribution archives.
-
-**Do not paste your actual key into chat.** Enter it locally on your own server. Home Assistant Core's `!secret` YAML convention is not a substitution mechanism for the app Configuration form; use that masked field or an environment/secret-file setup.
 
 ## Python / Docker service
 
@@ -84,7 +73,7 @@ The static GTFS importer uses the same configured access/key. Its explicitly req
 
 ## Separate De Lijn stop key (app 1.4.0)
 
-See [De Lijn real-time setup](DELIJN_REALTIME.md). `DELIJN_API_KEY` / `DELIJN_API_KEY_FILE` or masked HA `delijn_api_key` selects the supported stop-oriented API. It is not a BMC key. It has a separate `delijn_stop` quota bucket; key rotation does not reset usage. The multi-stop request costs one call. The BMC side then makes just the STIB request. Global automatic refresh still requires BMC credentials; a De Lijn-only key works with manual Refresh.
+See [De Lijn real-time setup](DELIJN_REALTIME.md). `DELIJN_API_KEY` / `DELIJN_API_KEY_FILE` (server), the sibling `Dashboard-secrets.js`, or Reference → API keys selects the supported stop-oriented API. It is not a BMC key. It has a separate `delijn_stop` quota bucket; key rotation does not reset usage. The multi-stop request costs one call. The BMC side then makes just the STIB request. Global automatic refresh still requires BMC credentials; a De Lijn-only key works with manual Refresh.
 
 
 ### Why two key fields?

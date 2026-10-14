@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Build one self-contained HTML dashboard (fonts, schedule, PDF, code and styles).
-The same file is served by server.py with live mode enabled, or opened standalone
-(file:// or any static host): then browser-side direct API access takes over and
-uses the keys embedded via COMMUTE_KEYS.
+"""Build the dashboard in two shapes, from the same template and sources:
+- Dashboard.html: one self-contained file (fonts, schedule, PDF, code and
+  styles inlined). Served by server.py with live mode enabled, or opened
+  standalone (file:// or any static host) with browser-side direct access.
+- site/: a standard multi-file static website (index.html + assets/*.css,
+  images, PDF + js/*.js). Same page, same code; data ships as window globals
+  in js/data-*.js so it also works over file://. Never carries key material.
 
 Key distribution (standalone direct access only; the server keeps reading its own
 private key files). Default: keys stay OUT of the page — when BMC_API_KEY(_FILE) /
@@ -74,33 +77,82 @@ def build(embed_keys=None):
         secrets_note = 'example only (keys embedded in page)'
     static = ROOT / 'static'
     html = (static / 'template.html').read_text()
+    css_src = (static / 'style.css').read_text() + '\n' + (static / 'readability.css').read_text() + '\n' + (static / 'personal.css').read_text() + '\n' + (static / 'glance.css').read_text()
+    timetable = (ROOT / 'data' / 'timetable.json').read_text()
+    walking = (ROOT / 'data' / 'walking.json').read_text()
+    logo_files = {'delijn':'delijn.png','stib':'mivb.png','shuttle':'tnt.png'}
+
+    # ---- shape 1: the self-contained single file --------------------------
     font = base64.b64encode((static / 'manrope-latin.woff2').read_bytes()).decode()
-    css = ((static / 'style.css').read_text() + '\n' + (static / 'readability.css').read_text() + '\n' + (static / 'personal.css').read_text() + '\n' + (static / 'glance.css').read_text()).replace('__FONT__', font)
     logos = {op: 'data:image/png;base64,' + base64.b64encode((static / 'logos' / name).read_bytes()).decode()
-             for op, name in {'delijn':'delijn.png','stib':'mivb.png','shuttle':'tnt.png'}.items()}
-    replacements = {
-        '/*__LIVE_KEYS__*/': json.dumps(keys),
-        '/*__STYLES__*/': css,
-        '/*__TIMETABLE__*/': (ROOT / 'data' / 'timetable.json').read_text().replace('</', '<\\/'),
-        '/*__WALKING__*/': (ROOT / 'data' / 'walking.json').read_text().replace('</', '<\\/'),
-        '/*__LOGOS__*/': json.dumps(logos),
-        '/*__PDF__*/': json.dumps(base64.b64encode((static / 'shuttle.pdf').read_bytes()).decode()),
-        '/*__ENGINE__*/': (static / 'engine.js').read_text().replace('</script', '<\\/script'),
-        '/*__LIVE_DIRECT__*/': (static / 'live-direct.js').read_text().replace('</script', '<\\/script'),
-        '/*__REFERENCE__*/': (static / 'reference.js').read_text().replace('</script', '<\\/script'),
-        '/*__APP__*/': (static / 'app.js').read_text().replace('</script', '<\\/script')
-    }
-    for marker, text in replacements.items():
-        if marker not in html:
-            raise ValueError('Missing template marker: ' + marker)
-        html = html.replace(marker, text)
+             for op, name in logo_files.items()}
+    data = ''.join(f'<script type="application/json" id="{tag}">{body}</script>' for tag, body in [
+        ('timetable-data', timetable.replace('</', '<\\/')),
+        ('walking-data', walking.replace('</', '<\\/')),
+        ('operator-logos', json.dumps(logos)),
+        ('pdf-data', json.dumps(base64.b64encode((static / 'shuttle.pdf').read_bytes()).decode()))])
+    code = ''.join(f'<script>{(static / name).read_text().replace("</script", "<\\/script")}</script>'
+                   for name in ('engine.js', 'live-direct.js', 'reference.js', 'app.js'))
+    mono = html.replace('/*__LIVE_KEYS__*/', json.dumps(keys)) \
+               .replace('/*__HEAD__*/', '<style>' + css_src.replace('__FONT__', font) + '</style>') \
+               .replace('/*__DATA__*/', data) \
+               .replace('/*__CODE__*/', code)
+    for leftover in ('/*__HEAD__*/', '/*__DATA__*/', '/*__CODE__*/'):
+        if leftover in mono:
+            raise ValueError('Missing template marker: ' + leftover)
     output = ROOT / 'Dashboard.html'
     tmp = output.with_suffix('.tmp')
-    tmp.write_text(html, encoding='utf-8')
+    tmp.write_text(mono, encoding='utf-8')
     tmp.replace(output)
+
+    # ---- shape 2: the multi-file static site ------------------------------
+    build_static(html, css_src, timetable, walking, logo_files, env_keys)
+
     embedded = 'BMC+De Lijn keys' if keys['bmc'] and keys['delijn'] else 'De Lijn key only' if keys['delijn'] else 'BMC key only' if keys['bmc'] else 'none (secrets sibling/browser storage)'
     print(f'Built {output.name}: {output.stat().st_size:,} bytes; no external assets required; embedded keys: {embedded}; secrets file: {secrets_note}.')
     return output
+
+def build_static(template, css_src, timetable, walking, logo_files, env_keys):
+    """Write site/: index.html + assets/*.css|font|logos|PDF + js/*.js.
+    Same template and the same script files as the single-file build; the
+    static shapes differ only in how the head/data/code markers are filled.
+    Never embeds keys: the sibling Dashboard-secrets.js (git-ignored) is the
+    only key source, exactly like for the single-file standalone build."""
+    import shutil
+    static = ROOT / 'static'
+    site = ROOT / 'site'
+    (site / 'assets' / 'logos').mkdir(parents=True, exist_ok=True)
+    (site / 'js').mkdir(parents=True, exist_ok=True)
+    font_css = css_src.replace('data:font/woff2;base64,__FONT__', 'manrope-latin.woff2')
+    (site / 'assets' / 'commute.css').write_text(font_css, encoding='utf-8')
+    shutil.copy2(static / 'manrope-latin.woff2', site / 'assets' / 'manrope-latin.woff2')
+    shutil.copy2(static / 'shuttle.pdf', site / 'assets' / 'TT-SHUTTLE-SCHEDULE.pdf')
+    for name in logo_files.values():
+        shutil.copy2(static / 'logos' / name, site / 'assets' / 'logos' / name)
+    (site / 'js' / 'data-timetable.js').write_text('window.__TIMETABLE__=' + timetable.strip() + ';\n', encoding='utf-8')
+    (site / 'js' / 'data-walking.js').write_text('window.__WALKING__=' + walking.strip() + ';\n', encoding='utf-8')
+    for name in ('engine.js', 'live-direct.js', 'reference.js', 'app.js'):
+        shutil.copy2(static / name, site / 'js' / name)
+    index = template.replace('/*__LIVE_KEYS__*/', json.dumps({'bmc': '', 'delijn': ''})) \
+        .replace('/*__HEAD__*/', '<link rel="stylesheet" href="assets/commute.css">') \
+        .replace('/*__DATA__*/',
+                 '<script src="js/data-timetable.js"></script><script src="js/data-walking.js"></script>'
+                 '<script type="application/json" id="operator-logos">' + json.dumps({op: 'assets/logos/' + name for op, name in logo_files.items()}) + '</script>'
+                 "<script>window.__PDF_PATH__='assets/TT-SHUTTLE-SCHEDULE.pdf';</script>") \
+        .replace('/*__CODE__*/', ''.join(f'<script src="js/{name}"></script>' for name in ('engine.js', 'live-direct.js', 'reference.js', 'app.js')))
+    (site / 'index.html').write_text(index, encoding='utf-8')
+    if env_keys['bmc'] or env_keys['delijn']:
+        shutil.copy2(ROOT / 'Dashboard-secrets.js', site / 'Dashboard-secrets.js')
+        secrets_note = 'copied (git-ignored)'
+    else:
+        stale = site / 'Dashboard-secrets.js'
+        if stale.exists():
+            stale.unlink()
+        secrets_note = 'none (use the root sibling or browser storage)'
+    files = [f for f in site.rglob('*') if f.is_file()]
+    total = sum(f.stat().st_size for f in files)
+    print(f'Built site/: index.html + {len(files):,} files, {total:,} bytes total; secrets file: {secrets_note}.')
+    return site
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])

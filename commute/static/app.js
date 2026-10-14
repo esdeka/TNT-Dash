@@ -1,10 +1,12 @@
 (function () {
   'use strict';
   const E = window.CommuteEngine;
-  const DATA = JSON.parse(document.getElementById('timetable-data').textContent);
-  const WALKS = JSON.parse(document.getElementById('walking-data').textContent);
-  const PDF = JSON.parse(document.getElementById('pdf-data').textContent);
-  const LOGOS = JSON.parse(document.getElementById('operator-logos').textContent);
+  // Data ships either inlined as JSON script tags (single-file build) or as
+  // window globals from js/data-*.js files (multi-file static site in site/).
+  const DATA = window.__TIMETABLE__ || JSON.parse(document.getElementById('timetable-data').textContent);
+  const WALKS = window.__WALKING__ || JSON.parse(document.getElementById('walking-data').textContent);
+  const PDF = window.__PDF_PATH__ ? '' : JSON.parse(document.getElementById('pdf-data').textContent);
+  const LOGOS = window.__LOGOS__ || JSON.parse(document.getElementById('operator-logos').textContent);
   const FETCH_DATE = E.dateISO(Math.max(...Object.values(DATA.operators).map(d => Date.parse(d.fetchedAt || DATA.generatedAt) / 1000)));
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
@@ -156,6 +158,7 @@
     else if(!liveMode())text='Planned times · no current bus delays';
     else if(state.loading)text='Updating live data…';
     else if(!state.access&&state.statusLoading)text='Checking live access…';
+    else if(providers.delijn?.ok&&providers.delijn?.stopApiFallback?.kind==='authentication')text='De Lijn key rejected · live via the BMC feed · check Reference';
     else if(providers.delijn?.kind==='stop-api'&&providers.delijn?.errorKind==='authentication')text='De Lijn key rejected · check Reference';
     else if(errorKinds.includes('authentication')&&!freshCount)text='API key rejected · check server settings';
     else if(errorKinds.includes('quota')&&!freshCount)text='Provider quota reached · timetable';
@@ -199,7 +202,7 @@
   const collapseEligible=r=>state.collapse&&r.operator!=='shuttle'&&Boolean(r.collapseEligible ?? r.dominated);
   function timelineEvent(r,pos){
     const t=E.timingStatus(r,'departure'),rel=relative(t.actual);
-    return `<div class="timeline-event tone-${t.tone} ${r.cancelled||r.boardingUnavailable?'cancelled':''}" style="top:${pos.top}px" data-dep="${r.departure}" data-action="detail" data-id="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.line)} at ${clock(t.actual)} from ${esc(r.origin.name)} to ${esc(r.destination.name)} toward ${esc(r.headsign)}${r.cancelled?', cancelled':''}"><strong>${clock(t.actual)}</strong>${rel!==null?`<span class="rel">${esc(rel)}</span>`:''}${lineBadge(r)}${t.delta!==null&&Math.abs(t.delta)>=120?`<span class="clock-delta ${t.estimated?'estimated-delay':''}">(<span class="original-time">${clock(t.original)}</span> <span class="delta-value">${deltaText(t.delta)}</span>)</span>`:''}${r.cancelled?`<span class="cancel-note">${esc(r.cancellationReason||'Cancelled')}</span>`:r.boardingUnavailable?'<span class="cancel-note">Not boarding</span>':''}</div>`;
+    return `<div class="timeline-event tone-${t.tone} ${r.cancelled||r.boardingUnavailable?'cancelled':''}" style="top:${pos.top}px" data-dep="${r.departure}" data-eff="${pos.eff??r.departure}" data-action="detail" data-id="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.line)} at ${clock(t.actual)} from ${esc(r.origin.name)} to ${esc(r.destination.name)} toward ${esc(r.headsign)}${r.cancelled?', cancelled':''}"><strong>${clock(t.actual)}</strong>${rel!==null?`<span class="rel">${esc(rel)}</span>`:''}${lineBadge(r)}${t.delta!==null&&Math.abs(t.delta)>=120?`<span class="clock-delta ${t.estimated?'estimated-delay':''}">(<span class="original-time">${clock(t.original)}</span> <span class="delta-value">${deltaText(t.delta)}</span>)</span>`:''}${r.cancelled?`<span class="cancel-note">${esc(r.cancellationReason||'Cancelled')}</span>`:r.boardingUnavailable?'<span class="cancel-note">Not boarding</span>':''}</div>`;
   }
   // Connectors: when one physical trip serves Picard AND Suzan Daniel, both
   // boarding cards are shown and a line links them (catch it at the later stop).
@@ -209,14 +212,14 @@
       const a=board.querySelector(`.timeline-event[data-id="${CSS.escape(aId)}"]`),b=board.querySelector(`.timeline-event[data-id="${CSS.escape(bId)}"]`);
       if(!a||!b)continue;
       const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect();
-      segments.push({x1:ra.right-box.left,y1:ra.top+ra.height/2-box.top,x2:rb.left-box.left,y2:rb.top+rb.height/2-box.top,tone:a.className.match(/tone-([a-z-]+)/)?.[1]||'unknown'});
+      segments.push({a:aId,b:bId,x1:ra.right-box.left,y1:ra.top+ra.height/2-box.top,x2:rb.left-box.left,y2:rb.top+rb.height/2-box.top,tone:a.className.match(/tone-([a-z-]+)/)?.[1]||'unknown'});
     }
     if(!segments.length)return;
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('class','tl-links');svg.setAttribute('width',box.width);svg.setAttribute('height',box.height);svg.setAttribute('viewBox',`0 0 ${box.width} ${box.height}`);
     for(const s of segments){
       const mid=(s.x1+s.x2)/2,p=document.createElementNS('http://www.w3.org/2000/svg','path');
-      p.setAttribute('d',`M${s.x1} ${s.y1} C ${mid} ${s.y1}, ${mid} ${s.y2}, ${s.x2} ${s.y2}`);p.setAttribute('class','tl-link tone-'+s.tone);svg.appendChild(p);
+      p.setAttribute('d',`M${s.x1} ${s.y1} C ${mid} ${s.y1}, ${mid} ${s.y2}, ${s.x2} ${s.y2}`);p.setAttribute('class','tl-link tone-'+s.tone);p.setAttribute('data-a',s.a);p.setAttribute('data-b',s.b);svg.appendChild(p);
     }
     board.appendChild(svg);
   }
@@ -226,7 +229,7 @@
   // sits, while uncongested cards stay on their proportional clock position.
   function drawTimeline(){
     const inbound=state.direction==='toBN';
-    const cols=inbound?[{group:'shuttle',name:'TNT shuttle'},...(state.startPoint==='home'?[{group:'picard',name:'Picard'}]:[]),{group:'suzan',name:'Suzan Daniel'},{group:'thurn',name:'Thurn en Taxis'}]:[{group:'shuttle',name:'TNT'},{group:'stib',name:'MIVB'},{group:'delijn',name:'De Lijn'}];
+    const cols=inbound?[{group:'shuttle',name:'TNT shuttle'},{group:'suzan',name:'Suzan Daniel'},...(state.startPoint==='home'?[{group:'picard',name:'Picard'}]:[]),{group:'thurn',name:'Thurn en Taxis'}]:[{group:'shuttle',name:'TNT'},{group:'stib',name:'MIVB'},{group:'delijn',name:'De Lijn'}];
     const keyOf=r=>inbound?r.origin.group:r.operator;
     // The timeline keeps both stops of a multi-stop trip; the deduplicated
     // list rows stay untouched, so rebuild rows without preferred-stop selection.
@@ -256,7 +259,18 @@
     const lists=cols.map(c=>buckets[c.group].sort((a,b)=>a.departure-b.departure).slice(0,20));
     const all=lists.flat();
     if(!all.length){$('departure-rows').innerHTML='<p class="timeline-empty">No departures in this window</p>';return;}
-    const t0=Math.floor(Math.min(...all.map(r=>r.departure))/60)*60,tEnd=Math.max(...all.map(r=>r.departure));
+    // Twin-aware clock times: a Picard boarding card whose bus also stops at
+    // Suzan Daniel (all Picard buses do) is plotted at the SUZAN departure
+    // tick, so both cards share one height and their connector is horizontal.
+    // The card itself still shows its honest Picard departure time.
+    const effOf=new Map(),twinPairs=[];
+    if(inbound){
+      const tgroups=new Map();
+      for(const r of all){const key=r.tripId||r.estimatedTripId;if(!key)continue;const g=r.origin.group;if(g!=='picard'&&g!=='suzan')continue;const tk=r.operator+'|'+r.serviceDate+'|'+key;if(!tgroups.has(tk))tgroups.set(tk,new Map());tgroups.get(tk).set(g,r);}
+      for(const g of tgroups.values())if(g.has('picard')&&g.has('suzan')){effOf.set(g.get('picard').id,g.get('suzan').departure);twinPairs.push([g.get('picard').id,g.get('suzan').id]);}
+    }
+    const effDep=r=>effOf.get(r.id)??r.departure;
+    const t0=Math.floor(Math.min(...all.map(r=>r.departure))/60)*60,tEnd=Math.max(...all.map(r=>effDep(r)));
     const ppm=(tEnd-t0)>200*60?6:9,CARD=25,TALL=38,GAP=2,SLOP=12;
     const tickAt=t=>(t-t0)*ppm/60;
     const cardH=r=>r.cancelled||r.boardingUnavailable||(t=>t.delta!==null&&Math.abs(t.delta)>=120)(E.timingStatus(r,'departure'))?TALL:CARD;
@@ -265,27 +279,28 @@
     // height across columns; cards in DIFFERENT columns may overlap their
     // predecessor's card vertically by up to SLOP px to stay near their clock
     // position; cards in the same column never overlap.
-    const ordered=[...all].sort((a,b)=>a.departure-b.departure||String(a.id).localeCompare(String(b.id)));
+    const ordered=[...all].sort((a,b)=>effDep(a)-effDep(b)||String(a.id).localeCompare(String(b.id)));
     const colOf=new Map();
     for(let ci=0;ci<cols.length;ci++)for(const r of lists[ci])colOf.set(r.id,ci);
+    // Twin pairs are placed jointly: one shared top, valid against BOTH lanes,
+    // so neither lane's congestion can tilt the pair out of alignment.
+    const rowById=new Map(all.map(r=>[r.id,r])),pairRows=new Map(),placed=new Set();
+    for(const [a,b] of twinPairs){pairRows.set(a,b);pairRows.set(b,a);}
     const positions=new Map(),laneBottom=new Map();let bottom=0,cursor=0,prevMinute=null,prevTop=-1;
     for(const r of ordered){
-      const h=cardH(r),pos=tickAt(r.departure),minute=Math.floor(r.departure/60),lane=colOf.get(r.id);
+      if(placed.has(r.id))continue;
+      const q=pairRows.has(r.id)?rowById.get(pairRows.get(r.id)):null;
+      const h=cardH(r),qh=q?cardH(q):0,pos=tickAt(effDep(r)),minute=Math.floor(effDep(r)/60),lane=colOf.get(r.id),qlane=q?colOf.get(q.id):null;
       let top=minute===prevMinute&&prevTop>=0?prevTop:Math.max(pos,cursor-SLOP);
       top=Math.max(top,(laneBottom.has(lane)?laneBottom.get(lane):-Infinity)+GAP);
-      positions.set(r.id,{top,h});
-      laneBottom.set(lane,top+h);cursor=Math.max(cursor,top+h);prevMinute=minute;prevTop=top;
+      if(q)top=Math.max(top,(laneBottom.has(qlane)?laneBottom.get(qlane):-Infinity)+GAP);
+      positions.set(r.id,{top,h,eff:effDep(r)});laneBottom.set(lane,top+h);cursor=Math.max(cursor,top+h);placed.add(r.id);
+      if(q){positions.set(q.id,{top,h:qh,eff:effDep(q)});laneBottom.set(qlane,top+qh);cursor=Math.max(cursor,top+qh);placed.add(q.id);}
+      prevMinute=minute;prevTop=top;
     }
     bottom=Math.max(cursor,CARD);
     const H=Math.max(bottom,(tEnd-t0)*ppm/60+CARD);
     const ticks=[];for(let t=Math.ceil(t0/900)*900;t<=tEnd;t+=900)ticks.push(t);
-    // Same-vehicle cards in both Picard and Suzan Daniel (linked twins).
-    const twinPairs=[];
-    if(inbound){
-      const tgroups=new Map();
-      for(const r of all){const key=r.tripId||r.estimatedTripId;if(!key)continue;const g=r.origin.group;if(g!=='picard'&&g!=='suzan')continue;const tk=r.operator+'|'+r.serviceDate+'|'+key;if(!tgroups.has(tk))tgroups.set(tk,new Map());tgroups.get(tk).set(g,r);}
-      for(const g of tgroups.values())if(g.has('picard')&&g.has('suzan'))twinPairs.push([g.get('picard').id,g.get('suzan').id]);
-    }
     $('departure-rows').innerHTML=`<div class="tl-scroll"><div class="timeline-grid tl-board" style="--tl-cols:${cols.length}"><div class="tl-ruler"><div class="tl-ruler-head"></div><div class="tl-lane" style="height:${H}px">${ticks.map(t=>`<span class="tl-tick" style="top:${tickAt(t)}px">${clock(t)}</span>`).join('')}</div></div>${cols.map((c,ci)=>{
       const list=lists[ci],extra=buckets[c.group].length-list.length,last=list.length?positions.get(list[list.length-1].id):null;
       return `<section class="timeline-col" data-group="${c.group}"><h2>${esc(c.name)}</h2><div class="tl-lane" style="height:${H}px">${ticks.map(t=>`<i class="tl-line" style="top:${tickAt(t)}px"></i>`).join('')}${list.map(r=>timelineEvent(r,positions.get(r.id))).join('')}${extra?`<span class="tl-more" style="top:${(last?.top??0)+(last?.h??0)+6}px">+${extra} later</span>`:''}${!list.length?'<p class="timeline-empty">No departures in this window</p>':''}</div></section>`;
@@ -293,16 +308,23 @@
     const board=$('departure-rows').querySelector('.tl-board');
     if(!board)return;
     // Re-pack with the real rendered heights (cards can wrap to two lines on
-    // narrow columns), keeping the same compact shared order.
-    const events=[...board.querySelectorAll('.timeline-event')].sort((a,b)=>(+a.dataset.dep)-(+b.dataset.dep)||a.dataset.id.localeCompare(b.dataset.id));
+    // narrow columns), keeping the same compact shared order (effective twin
+    // times), so aligned Picard/Suzan cards keep their identical height.
+    const effOfEl=el=>+el.dataset.eff;
+    const events=[...board.querySelectorAll('.timeline-event')].sort((a,b)=>effOfEl(a)-effOfEl(b)||a.dataset.id.localeCompare(b.dataset.id));
+    const elById=new Map(events.map(el=>[el.dataset.id,el])),elPair=new Map(),doneEls=new Set();
+    for(const [a,b] of twinPairs){const ea=elById.get(a),eb=elById.get(b);if(ea&&eb){elPair.set(ea,eb);elPair.set(eb,ea);}}
     let maxBottom=H;cursor=0;prevMinute=null;prevTop=-1;
     const trueLaneBottom=new Map();
-    for(const e of events){
-      const dep=+e.dataset.dep,minute=Math.floor(dep/60),lane=e.closest('.timeline-col');
-      let top=minute===prevMinute&&prevTop>=0?prevTop:Math.max(parseFloat(e.style.top)||0,cursor-SLOP);
+    for(const el of events){
+      if(doneEls.has(el))continue;
+      const p=elPair.get(el)||null,minute=Math.floor(effOfEl(el)/60),lane=el.closest('.timeline-col'),plane=p?p.closest('.timeline-col'):null;
+      let top=minute===prevMinute&&prevTop>=0?prevTop:Math.max(parseFloat(el.style.top)||0,cursor-SLOP);
       top=Math.max(top,(trueLaneBottom.has(lane)?trueLaneBottom.get(lane):-Infinity)+GAP);
-      e.style.top=top+'px';
-      trueLaneBottom.set(lane,top+e.offsetHeight);cursor=Math.max(cursor,top+e.offsetHeight);prevMinute=minute;prevTop=top;
+      if(p)top=Math.max(top,(trueLaneBottom.has(plane)?trueLaneBottom.get(plane):-Infinity)+GAP);
+      el.style.top=top+'px';trueLaneBottom.set(lane,top+el.offsetHeight);doneEls.add(el);
+      if(p){p.style.top=top+'px';trueLaneBottom.set(plane,top+p.offsetHeight);cursor=Math.max(cursor,top+p.offsetHeight);doneEls.add(p);}
+      cursor=Math.max(cursor,top+el.offsetHeight);prevMinute=minute;prevTop=top;
     }
     maxBottom=Math.max(maxBottom,cursor);
     for(const col of board.querySelectorAll('.timeline-col')){
@@ -429,7 +451,7 @@
   }
 
   function openReference(tab='method'){    state.dialogTab=tab;state.dialogRow=null;$('dialog-eyebrow').textContent='REFERENCE';
-    const tabs=[['method','Rules & colours'],['shuttle','Shuttle'],['walking','Walking'],['stops','Stops'],['sources','Sources'],['keys','API keys'],['technical','API & HA']];
+    const tabs=[['method','Rules & colours'],['shuttle','Shuttle'],['walking','Walking'],['stops','Stops'],['sources','Sources'],['keys','API keys'],['version','Version'],['technical','API & HA']];
     $('dialog-title').textContent=Object.fromEntries(tabs)[tab]||'Reference';$('dialog-tabs').innerHTML=tabs.map(([key,label])=>`<button class="${key===tab?'active':''}" data-action="modal" data-tab="${key}">${label}</button>`).join('');
     $('dialog-content').innerHTML=reference.content(tab);if(!$('details-dialog').open)$('details-dialog').showModal();$('dialog-content').scrollTop=0;
   }

@@ -1,2 +1,6 @@
 # Private operator keys for the standalone page; never commit real values
 Dashboard-secrets.js
+__pycache__/
+.pytest_cache/
+data/quota.json
+data/live-state.json

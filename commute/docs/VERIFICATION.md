@@ -1,3 +1,15 @@
+# Verification — current (1.5.1)
+
+Completed 8 September 2026. Single-key Belgian Mobility operation (De Lijn live via the BMC GTFS-RT feed, full corridor verified); a rejected/empty De Lijn stop-API value falls back to that feed in the same refresh (browser and server, quota post-charged); sibling secrets file + browser key storage; multi-file `site/` build next to the single file; Reference version tab; towards-BN timeline columns T&T shuttle, Suzan Daniel, Picard, Thurn en Taxis with horizontally levelled Picard↔Suzan twins.
+
+- **61 engine tests, 24 Python checks and the 9-section browser suite passed** (timeline ordering/levelling assertions, wrong-stop-key fallback with pill and quota charges, both-feeds-down error surfacing, static-site subtest).
+- **Home Assistant material removed for now** in this revision: add-on packaging, guides, sensor templates and the `/api/next` + `/api/plan-train` entities API are gone from the tree (earlier git history retains them). Suite size dropped accordingly (formerly 37 Python checks incl. planner-API/HA).
+- De Lijn stop-API with a valid personal key remains implemented but unverified live: the portal rejects the key value on hand (HTTP 401 as of 8 September 2026), so all deployments run on the BMC key alone.
+
+Earlier revision reports follow below, kept for history.
+
+---
+
 # Verification — operator logos (1.4.1)
 
 Completed 7 September 2026. De Lijn, STIB/MIVB and T&T departure icons now use official compact logo assets, embedded as data URIs. Source/provenance is in `static/logos/SOURCES.md`; no marketing tagline or external image requests are added.

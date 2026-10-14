@@ -72,4 +72,48 @@ class DeLijnStopTests(unittest.TestCase):
             self.assertFalse(data['access']['autoRefreshAllowed']) # Existing global BMC-key rule preserved.
             self.assertNotIn(KEY,json.dumps(data))
 
+class BmcFeedFallbackTests(unittest.TestCase):
+    STOP_ERROR={'ok':False,'kind':'stop-api','attemptedAt':1000,'errorKind':'authentication',
+                'error':'De Lijn stop API rejected access; check the separate De Lijn subscription key.'}
+    GTFS_BODY={'header':{'gtfsRealtimeVersion':'2.0','incrementality':0,'timestamp':1000},'entity':[]}
+    class FakeResp:
+        def __enter__(self):return self
+        def __exit__(self,*args):return False
+        def read(self,limit=-1):return json.dumps(BmcFeedFallbackTests.GTFS_BODY).encode()
+    def test_rejected_stop_key_falls_back_to_bmc_feed(self):
+        with patch.object(server,'CONFIG',bmc_config({'BMC_API_KEY':'fictional-bmc-key-for-tests-only'})), \
+             patch.object(server,'DL_CONFIG',DL.load_config({'DELIJN_API_KEY':KEY})), \
+             patch.object(DL,'fetch',return_value=dict(self.STOP_ERROR)), \
+             patch.object(server,'urlopen',return_value=self.FakeResp()):
+            op,data=server.fetch_provider('delijn')
+        self.assertEqual(op,'delijn')
+        self.assertTrue(data['ok'],'BMC GTFS-RT feed rescues De Lijn live data')
+        self.assertEqual(data['stopApiFallback']['kind'],'authentication')
+        self.assertEqual(data['stopApiFallback']['message'],self.STOP_ERROR['error'])
+        self.assertNotIn(KEY,json.dumps(data))
+    def test_both_feeds_failing_reports_the_stop_error(self):
+        with patch.object(server,'CONFIG',bmc_config({})), \
+             patch.object(server,'DL_CONFIG',DL.load_config({'DELIJN_API_KEY':KEY})), \
+             patch.object(DL,'fetch',return_value=dict(self.STOP_ERROR)), \
+             patch.object(server,'urlopen',side_effect=OSError('offline')):
+            op,data=server.fetch_provider('delijn')
+        self.assertFalse(data['ok'])
+        self.assertEqual(data['kind'],'stop-api')
+        self.assertEqual(data['errorKind'],'authentication')
+        self.assertNotIn(KEY,json.dumps(data))
+    def test_fallback_refresh_charges_the_extra_bmc_call(self):
+        delijn_fallback={'ok':True,'fetchedAt':1000,'stopApiFallback':{'kind':'authentication','message':'rejected'}}
+        with TemporaryDirectory() as tmp, \
+             patch.object(server,'CONFIG',bmc_config({'BMC_API_KEY':'fictional-bmc-key-for-tests-only'})), \
+             patch.object(server,'DL_CONFIG',DL.load_config({'DELIJN_API_KEY':KEY})), \
+             patch.object(server,'STATE',{'providers':{},'lastAttempt':0}), \
+             patch.object(server,'QUOTA',server.migrate_quota({'calls':[999]})), \
+             patch.object(server,'STATE_PATH',Path(tmp)/'state.json'), \
+             patch.object(server,'QUOTA_PATH',Path(tmp)/'quota.json'), \
+             patch.object(server.time,'time',return_value=10000), \
+             patch.object(server,'fetch_provider',side_effect=lambda op:(op,{'ok':True,'fetchedAt':10000} if op=='stib' else dict(delijn_fallback))):
+            data=server.get_live(True,automatic=False)
+            self.assertEqual(data['quota']['used'],2) # registered bucket: STIB + fallback GTFS-RT
+            self.assertEqual(data['quota']['delijnStop']['used'],1)
+
 if __name__=='__main__':unittest.main()
