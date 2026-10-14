@@ -1,5 +1,16 @@
 {
-  "dependencies": {
+  "name": "tnt-dash",
+  "private": true,
+  "description": "Personal TNT ↔ Brussels North commute dashboard",
+  "scripts": {
+    "test": "npm run test:engine && npm run test:py && npm run test:ui",
+    "test:engine": "node tests/engine.test.js",
+    "test:ui": "node tests/ui.test.js",
+    "test:py": "python -m unittest discover -s tests -p \"test_*.py\"",
+    "serve": "python server/server.py --port 3000",
+    "build:data": "python tools/build_data.py"
+  },
+  "devDependencies": {
     "playwright": "^1.63.0"
   }
 }

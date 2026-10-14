@@ -9,6 +9,9 @@ from urllib.request import urlopen
 from urllib.error import HTTPError
 from unittest.mock import patch, MagicMock
 from http.server import ThreadingHTTPServer
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'server'))
 import rail
 import server
 
@@ -102,9 +105,10 @@ class HttpContractTests(unittest.TestCase):
     def test_docs_whitelist_and_no_arbitrary_file_serving(self):
         with urlopen(self.base+'/docs/AGENTS.md') as r:
             self.assertIn('Agent handoff',r.read().decode())
-        with self.assertRaises(HTTPError) as got:
-            urlopen(self.base+'/data/quota.json')
-        self.assertEqual(got.exception.code,404)
+        for private in ('/data/quota.json', '/Dashboard-secrets.js', '/../server/state/quota.json', '/%2e%2e/data/timetable.json'):
+            with self.assertRaises(HTTPError) as got:
+                urlopen(self.base+private)
+            self.assertEqual(got.exception.code,404, private)
 
 
 if __name__ == '__main__':

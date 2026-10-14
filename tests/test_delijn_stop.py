@@ -7,6 +7,9 @@ from unittest.mock import patch
 from urllib.request import HTTPRedirectHandler
 import json
 import unittest
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'server'))
 import delijn_live as DL
 import server
 from mobility_config import load_config as bmc_config

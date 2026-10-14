@@ -1,13 +1,27 @@
 /* Playwright regression suite for the compact departure-first dashboard.
-   Run with a local server: node test_ui.js. Fixtures are test-only; no synthetic
-   predictions are embedded in Dashboard.html. Provider polling is mocked here. */
+   Run: npm run test:ui. Starts server/server.py on a spare port with a
+   throwaway state directory (or uses DASHBOARD_URL if set). Fixtures are
+   test-only; no synthetic predictions ship in site/. Provider polling is mocked here. */
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
-const E=require('./static/engine.js'),D=require('./data/timetable.json');
-const URL=process.env.DASHBOARD_URL||'http://127.0.0.1:3000';
-const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true});
+const {spawn}=require('node:child_process'),{pathToFileURL}=require('node:url');
+const E=require('../site/js/engine.js'),D=require('../data/timetable.json');
+const ROOT=path.join(__dirname,'..'),SITE=path.join(ROOT,'site');
+const cache=path.join(ROOT,'.cache','ui-test');fs.mkdirSync(cache,{recursive:true});
+// A copy of site/ without the real (git-ignored) secrets file, optionally with a fixture one.
+function siteCopy(name,secrets){const dir=path.join(cache,name);fs.rmSync(dir,{recursive:true,force:true});fs.cpSync(SITE,dir,{recursive:true,filter:s=>path.basename(s)!=='Dashboard-secrets.js'});if(secrets)fs.writeFileSync(path.join(dir,'Dashboard-secrets.js'),secrets);return pathToFileURL(path.join(dir,'index.html')).href}
+async function startServer(){
+ if(process.env.DASHBOARD_URL)return{url:process.env.DASHBOARD_URL,stop(){}};
+ const port=3100+Math.floor(Math.random()*800),state=fs.mkdtempSync(path.join(cache,'state-'));
+ const env={...process.env,COMMUTE_STATE_DIR:state};for(const k of['BMC_API_KEY','BMC_API_KEY_FILE','DELIJN_API_KEY','DELIJN_API_KEY_FILE'])delete env[k];
+ const child=spawn(process.env.PYTHON||'python',[path.join(ROOT,'server','server.py'),'--port',String(port)],{env,stdio:['ignore','pipe','pipe']});
+ let log='';child.stderr.on('data',d=>{log=(log+d).slice(-4000)});  // request log; shown only if the server dies
+ await new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',c=>reject(new Error(`server exited ${c}\n${log}`)));child.stdout.on('data',d=>{if(String(d).includes('listening'))resolve()})});
+ return{url:`http://127.0.0.1:${port}`,stop(){child.kill();fs.rmSync(state,{recursive:true,force:true})}};
+}
 (async()=>{
+ const server=await startServer(),URL=server.url;process.on('exit',()=>server.stop());
  const browser=await chromium.launch({headless:true}), errors=[];
  const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'America/New_York'});
  await context.route('**/api/live/refresh',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({serverTime:Date.now()/1000,lastAttempt:Date.now()/1000,providers:{},quota:{refreshesLeft:40}})}));
@@ -31,7 +45,7 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  for(const op of ['stib','delijn','shuttle']){
   const logo=page.locator(`.departure-event .operator-timing-logo.${op}`).first();
   assert.ok(await logo.count()>0,`${op} logo is shown`);
-  assert.ok((await logo.getAttribute('src')).startsWith('data:image/png;base64,'));
+  assert.match(await logo.getAttribute('src'),/^assets\/logos\/\w+\.png$/);assert.ok(await logo.evaluate(i=>i.complete&&i.naturalWidth>0));
   await logo.evaluate(img=>img.decode());
   assert.ok(await logo.evaluate(img=>img.naturalWidth>0&&img.naturalHeight>0));
  }
@@ -230,7 +244,8 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  await xp.route('https://api-management-*/api/gtfs/feed/delijn/rt/trip-update',r=>{gtfsCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({header:{gtfsRealtimeVersion:'2.0',incrementality:0,timestamp:now},entity:[{tripUpdate:{trip:{tripId:dr.tripId,startDate:'20260907',scheduleRelationship:0},timestamp:now,stopTimeUpdate:[{stopId:dr.origin.id,stopSequence:dr.originSequence,departure:{time:dr.scheduledDeparture+360},scheduleRelationship:0},{stopId:dr.destination.id,stopSequence:dr.destinationSequence,arrival:{time:dr.scheduledArrival+420},scheduleRelationship:0}]}}]})})});
  await xp.route('https://api.delijn.be/**',r=>{dlCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dlStopFix)})});
  await xp.route('https://api.irail.be/**',r=>{irailCalls++;r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(irailFix)})});
- await xp.goto('file://'+path.join(__dirname,'Dashboard.html'),{waitUntil:'networkidle'});
+ const DIRECT=siteCopy('direct');
+ await xp.goto(DIRECT,{waitUntil:'networkidle'});
  assert.match((await xp.evaluate(()=>window.__statusLog))[0]||'',/Standalone · direct operator APIs/,'standalone announces direct access from the first paint');
  assert.ok(!(await xp.locator('#refresh-button').isDisabled()),'standalone direct enables Refresh');
  await xp.locator('#refresh-button').click();
@@ -255,25 +270,22 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  await xp.locator('.train-option').first().click();
  assert.ok((await xp.evaluate(()=>CommuteDashboard.getSnapshot())).trainResult,'train plan computed from the direct board');
  // Sibling secrets file: plain script tag, so it also loads on file://.
- fs.mkdirSync(path.join(cache,'sibling'),{recursive:true});
- fs.writeFileSync(path.join(cache,'sibling','Dashboard.html'),fs.readFileSync(path.join(__dirname,'Dashboard.html')));
- fs.writeFileSync(path.join(cache,'sibling','Dashboard-secrets.js'),'window.COMMUTE_SECRETS={bmc:"sib-bmc-key-12345",delijn:"sib-delijn-key-67890"};');
+ const SIBLING=siteCopy('sibling','window.COMMUTE_SECRETS={bmc:"sib-bmc-key-12345",delijn:"sib-delijn-key-67890"};');
  const sib=await browser.newContext({viewport:{width:390,height:844}}),sp2=await sib.newPage();sp2.on('pageerror',e=>errors.push(e.message));
  await sp2.route('https://api-management-*/**',r=>r.abort());await sp2.route('https://api.delijn.be/**',r=>r.abort());
- await sp2.goto('file://'+path.join(cache,'sibling','Dashboard.html'),{waitUntil:'networkidle'});
+ await sp2.goto(SIBLING,{waitUntil:'networkidle'});
  const sibStatus=await sp2.evaluate(()=>window.CommuteLiveDirect.keyStatus());
  assert.equal(sibStatus.bmcSource,'secrets file','sibling key file wins the source chain');assert.equal(sibStatus.delijnSource,'secrets file');
  assert.equal(sibStatus.bmc,'sib-…45','keys masked in status');
  await sib.close();
- // Multi-file static site: site/index.html + assets + js, loaded from file://.
- // Same template and code, data as window globals instead of inlined JSON tags.
- const staticSite=path.join(cache,'static-site');fs.cpSync(path.join(__dirname,'site'),staticSite,{recursive:true});
- fs.writeFileSync(path.join(staticSite,'Dashboard-secrets.js'),'window.COMMUTE_SECRETS={bmc:"sib-bmc-key-12345",delijn:""};');
+ // Multi-file static site: site/index.html + css + js, loaded from file://,
+ // data as window globals from js/data/*.js.
+ const STATIC_SITE=siteCopy('static-site','window.COMMUTE_SECRETS={bmc:"sib-bmc-key-12345",delijn:""};');
  const stc=await browser.newContext({viewport:{width:390,height:844}}),stp=await stc.newPage();stp.on('pageerror',e=>errors.push(e.message));
  await stp.addInitScript(watchStatus);
  await stp.route('https://api-management-*/**',r=>r.abort());await stp.route('https://api.delijn.be/**',r=>r.abort());await stp.route('https://api.irail.be/**',r=>r.abort());
- await stp.goto('file://'+path.join(staticSite,'index.html'),{waitUntil:'networkidle'});
- assert.equal(await stp.evaluate(()=>!!window.__TIMETABLE__&&!!window.__WALKING__&&!!document.querySelector('link[href="assets/commute.css"]')&&!document.getElementById('timetable-data')),true,'static shape: window globals + external css, no inlined data');
+ await stp.goto(STATIC_SITE,{waitUntil:'networkidle'});
+ assert.equal(await stp.evaluate(()=>!!window.__TIMETABLE__&&!!window.__WALKING__&&!!document.querySelector('link[href="css/style.css"]')&&!document.getElementById('timetable-data')),true,'static shape: window globals + external css, no inlined data');
  assert.equal(await stp.evaluate(()=>[...document.images].every(i=>i.complete&&i.naturalWidth>0)),true,'logo files load from assets/');
  assert.equal((await stp.evaluate(()=>window.CommuteLiveDirect.keyStatus())).bmcSource,'secrets file','sibling secrets also work in site/');
  assert.match((await stp.evaluate(()=>window.__statusLog))[0]||'',/Standalone · direct operator APIs/,'static site announces direct access from the first paint');
@@ -284,7 +296,7 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  await stp.locator('#dialog-tabs [data-tab="version"]').click();
  assert.match(await stp.locator('#dialog-content').innerText(),/v1\.5\.0/,'version tab shows the changelog');
  await stp.locator('#dialog-tabs [data-tab="shuttle"]').click();
- assert.equal(await stp.evaluate(()=>[...document.querySelectorAll('#dialog-content a')].some(a=>a.getAttribute('href')==='assets/TT-SHUTTLE-SCHEDULE.pdf')),true,'PDF link points at the real file');
+ assert.equal(await stp.evaluate(()=>[...document.querySelectorAll('#dialog-content a')].some(a=>a.getAttribute('href')==='assets/shuttle-2026.pdf')),true,'PDF link points at the real file');
  await stc.close();
  // Manual browser entry: Reference → API keys stores in localStorage (overrides every source) and clears again.
  await xp.locator('.reference-button').click();await xp.locator('#dialog-tabs [data-tab="keys"]').click();
@@ -319,8 +331,8 @@ const cache=path.join(__dirname,'../.cache');fs.mkdirSync(cache,{recursive:true}
  // The opaque-origin sandbox must keep working: storage failures are cached silently.
  const off=await context.newPage();await off.clock.install({time:new Date('2026-09-05T12:00:00Z')});off.on('pageerror',e=>errors.push(e.message));await off.addInitScript(watchStatus);
  await off.route('https://api-management-*/**',r=>r.abort());await off.route('https://api.delijn.be/**',r=>r.abort());await off.route('https://api.irail.be/**',r=>r.abort());
- await off.goto('file://'+path.join(__dirname,'Dashboard.html'));assert.match((await off.evaluate(()=>window.__statusLog))[0]||'',/Standalone · direct operator APIs/);await off.locator('#planner summary').click();await off.locator('#train-button').click();assert.ok(!(await off.locator('#load-trains').isDisabled()),'direct transport enables the iRail board');await off.locator('#train-date').fill('2026-09-07');await off.locator('#manual-train-time').fill('08:30');await off.locator('[data-action="manual-train"]').click();assert.equal(await off.evaluate(()=>CommuteDashboard.engine.hhmm(CommuteDashboard.getSnapshot().best.journeyStart)),'08:14');
- const sandbox=await context.newPage();sandbox.on('pageerror',e=>errors.push(e.message));await sandbox.setContent('<iframe sandbox="allow-scripts" style="width:100%;height:100vh"></iframe>');await sandbox.locator('iframe').evaluate((e,html)=>e.srcdoc=html,fs.readFileSync(path.join(__dirname,'Dashboard.html'),'utf8'));const frame=sandbox.frameLocator('iframe');await frame.locator('#planner summary').click();await frame.locator('#plan-button').click();await frame.locator('#plan-date').fill('2026-09-07');await frame.locator('#plan-time').fill('08:00');await frame.locator('#local-clock').click();assert.match(await frame.locator('#recommendation').innerText(),/Picard/);
+ await off.goto(DIRECT);assert.match((await off.evaluate(()=>window.__statusLog))[0]||'',/Standalone · direct operator APIs/);await off.locator('#planner summary').click();await off.locator('#train-button').click();assert.ok(!(await off.locator('#load-trains').isDisabled()),'direct transport enables the iRail board');await off.locator('#train-date').fill('2026-09-07');await off.locator('#manual-train-time').fill('08:30');await off.locator('[data-action="manual-train"]').click();assert.equal(await off.evaluate(()=>CommuteDashboard.engine.hhmm(CommuteDashboard.getSnapshot().best.journeyStart)),'08:14');
+ const sandbox=await context.newPage();sandbox.on('pageerror',e=>errors.push(e.message));await sandbox.setContent(`<iframe sandbox="allow-scripts" src="${URL}/" style="width:100%;height:100vh"></iframe>`);const frame=sandbox.frameLocator('iframe');await frame.locator('#planner summary').click();await frame.locator('#plan-button').click();await frame.locator('#plan-date').fill('2026-09-07');await frame.locator('#plan-time').fill('08:00');await frame.locator('#local-clock').click();assert.match(await frame.locator('#recommendation').innerText(),/Picard/);
  assert.deepEqual(errors,[]);console.log('✓ Standalone/manual train plan, opaque iframe and no uncaught browser errors');
- await browser.close();
+ await browser.close();server.stop();
 })().catch(e=>{console.error(e);process.exit(1)});

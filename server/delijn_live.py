@@ -45,7 +45,7 @@ def load_config(environ=None):
     key = str(env.get('DELIJN_API_KEY') or '').strip()
     if not key and env.get('DELIJN_API_KEY_FILE'):
         try:
-            key = Path(env['DELIJN_API_KEY_FILE']).read_text().strip()
+            key = Path(env['DELIJN_API_KEY_FILE']).read_text(encoding='utf-8').strip()
         except OSError:
             raise ValueError('Cannot read the configured De Lijn key file') from None
     try:

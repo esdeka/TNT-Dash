@@ -32,7 +32,7 @@ QUOTA_PATH = STATE_DIR / 'quota.json'
 TTL = 60
 STALE_AFTER = 120
 LOCK = threading.Lock()
-TIMETABLE = json.loads((ROOT / 'data' / 'timetable.json').read_text())
+TIMETABLE = json.loads((ROOT / 'data' / 'timetable.json').read_text(encoding='utf-8'))
 FEED_PATHS = {'stib':'datasets/stibmivb/rt/WaitingTimes', 'delijn':'gtfs/feed/delijn/rt/trip-update'}
 ENDPOINTS = {op: BASE + path for op,path in FEED_PATHS.items()}
 DL_STOPS = tuple(TIMETABLE['operators']['delijn']['stops'])
@@ -45,7 +45,7 @@ def public_access():
 
 def load_json(path, default):
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return default
 
@@ -287,7 +287,7 @@ class Handler(BaseHTTPRequestHandler):
                 **{'/docs/' + name: ROOT / 'docs' / name for name in
                    ['ARCHITECTURE.md','OPERATIONS.md','TRAIN_PLANNING.md','API.md','API_ACCESS.md','DELIJN_REALTIME.md','VERIFICATION.md']}}
         if path in docs and docs[path].exists():
-            return self.send(docs[path].read_text(), 'text/plain; charset=utf-8')
+            return self.send(docs[path].read_text(encoding='utf-8'), 'text/plain; charset=utf-8')
         if path == '/favicon.svg':
             return self.send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="#184e43"/><rect x="11" y="8" width="18" height="23" rx="4" fill="none" stroke="#d4f3c3" stroke-width="2.5"/><path d="M11 19h18M15 31v3m10-3v3M15 25h1m8 0h1" stroke="#d4f3c3" stroke-width="2.5"/></svg>', 'image/svg+xml')
         static = self.site_file(path)

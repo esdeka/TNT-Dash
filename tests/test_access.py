@@ -10,6 +10,9 @@ from http.server import ThreadingHTTPServer
 import json
 import threading
 import unittest
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'server'))
 import mobility_config as mc
 import server
 

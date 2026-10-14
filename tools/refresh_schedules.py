@@ -30,7 +30,7 @@ def refresh(cached=False, operators=None):
     if not selected or not selected <= {'stib', 'delijn'}:
         raise ValueError('Choose stib and/or delijn')
     existing = DATA / 'timetable.json'
-    output = json.loads(existing.read_text()) if existing.exists() else {'version': 1, 'timezone': 'Europe/Brussels', 'operators': {}}
+    output = json.loads(existing.read_text(encoding='utf-8')) if existing.exists() else {'version': 1, 'timezone': 'Europe/Brussels', 'operators': {}}
     output['generatedAt'] = datetime.now(timezone.utc).isoformat()
     # A targeted import must preserve the other provider's snapshot exactly.
     for op, agency in [('stib', 'stibmivb'), ('delijn', 'delijn')]:
@@ -48,7 +48,7 @@ def refresh(cached=False, operators=None):
             meta = {'source': url, 'fetched_at': datetime.now(timezone.utc).isoformat(), 'headers': headers}
             path.with_suffix('.zip.meta.json').write_text(json.dumps(meta))
         meta_path = path.with_suffix('.zip.meta.json')
-        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        meta = json.loads(meta_path.read_text(encoding='utf-8')) if meta_path.exists() else {}
         z = zipfile.ZipFile(path)
         def rows(name):
             return csv.DictReader(io.TextIOWrapper(z.open(name), encoding='utf-8-sig', newline=''))

@@ -44,7 +44,7 @@ def load_config(environ=None):
     key = str(env.get('BMC_API_KEY') or '').strip()
     if not key and env.get('BMC_API_KEY_FILE'):
         try:
-            key = Path(env['BMC_API_KEY_FILE']).read_text().strip()
+            key = Path(env['BMC_API_KEY_FILE']).read_text(encoding='utf-8').strip()
         except OSError:
             raise ValueError('Cannot read the configured BMC API-key secret file') from None
     if not key:

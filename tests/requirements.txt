@@ -1,0 +1,2 @@
+# Test-only dependencies (server deps: server/requirements.txt)
+-r ../server/requirements.txt
