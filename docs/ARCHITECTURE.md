@@ -144,7 +144,7 @@ The scoped STIB import for line 88 remains: `tools/refresh_schedules.py --operat
 
 ## Private transport configuration and STIB coverage
 
-`mobility_config.py` is used by the server and GTFS importer. Empty key means the anonymous Discovery base; a configured private key/file means the registered HTTPS base, with a key in an unredirected `Ocp-Apim-Subscription-Key` header. Only sanitized capabilities reach the browser. Auth failures do not fall back to anonymous. See `API_ACCESS.md`.
+`mobility_config.py` is used by the server and GTFS importer. Empty key means the anonymous Discovery base; a configured private key/file means the registered HTTPS base, with a key in an unredirected `bmc-partner-key` header. Only sanitized capabilities reach the browser. Auth failures do not fall back to anonymous. See `API_ACCESS.md`.
 
 The client first reads cached state/capabilities. It starts with auto refresh disabled until the server allows it. No key means no automatic POST, even on reopening, mode changes or focus. The server treats unmarked requests as automatic and blocks anonymous automatic refresh, protecting against older tabs. Manual requests are explicitly tagged.
 

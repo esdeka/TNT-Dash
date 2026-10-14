@@ -30,7 +30,7 @@ Default bases:
 - Anonymous: `https://api-management-discovery-production.azure-api.net/api/`
 - Registered: `https://api-management-opendata-production.azure-api.net/api/`
 
-The key is sent in **`Ocp-Apim-Subscription-Key`**, never in the URL. It is an unredirected request header, so it is not forwarded to another host if an API response redirects. It is not sent to iRail or operator web-page links. Registered failures do not silently fall back to anonymous access.
+The key is sent in **`bmc-partner-key`** (the header BMC's API portal uses), never in the URL. Before 14 October 2026 the code sent `Ocp-Apim-Subscription-Key`, which this gateway ignores: requests then counted as unauthenticated and hit a shared quota ("Out of call volume quota") while the subscription showed 0 calls. The De Lijn stop API (`api.delijn.be`) does use `Ocp-Apim-Subscription-Key`. It is an unredirected request header, so it is not forwarded to another host if an API response redirects. It is not sent to iRail or operator web-page links. Registered failures do not silently fall back to anonymous access.
 
 The authenticated base is configurable because the assigned subscription documentation is authoritative. **No real registered key was supplied in this workspace, so successful authenticated upstream access has not been verified here.** Mode selection, header construction, no-secret-exposure and error handling were tested with fictional keys and mocked transport. Unauthenticated checks of the registered gateway reached its quota policy, not a successful authenticated data response.
 

@@ -35,7 +35,9 @@ class MobilityConfig:
         request = Request(self.base + endpoint.lstrip('/'), headers={
             'Accept': accept, 'User-Agent': 'PersonalCommuteDashboard/1.3'})
         if self.api_key:
-            request.add_unredirected_header('Ocp-Apim-Subscription-Key', self.api_key)
+            # BMC's gateway reads the key from bmc-partner-key; it silently ignores
+            # Ocp-Apim-Subscription-Key, which then counts as anonymous traffic.
+            request.add_unredirected_header('bmc-partner-key', self.api_key)
         return request
 
 

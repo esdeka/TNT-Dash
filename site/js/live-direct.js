@@ -225,7 +225,7 @@ window.CommuteLiveDirect = (() => {
       }
     }
     try {
-      const headers = K.bmc ? { 'Ocp-Apim-Subscription-Key': K.bmc } : {};
+      const headers = K.bmc ? { 'bmc-partner-key': K.bmc } : {};  // BMC ignores Ocp-Apim-Subscription-Key
       const body = await fetchJson(endpointFor(K, op), headers);
       const data = op === 'stib' ? normalizeStib(body, nowSeconds()) : normalizeDelijnGtfs(body, nowSeconds());
       if (stopFailure) data.stopApiFallback = stopFailure;
