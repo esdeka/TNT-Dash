@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Personal TNT–Brussels North commute dashboard. Run: python server.py --port 3000
+"""Personal TNT–Brussels North commute dashboard. Run: python server/server.py --port 3000
+Serves the static site/ folder with server-side live access and the JSON API.
 Without a key: anonymous and manual-only. With a private key: registered access and auto eligibility. Live feeds are cached at least a minute.
 Public-feed safeguards: 80 upstream calls / rolling 24h and 4 / rolling minute.
 The remaining headroom is reserved for timetable downloads and source checks.
@@ -9,18 +10,22 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, unquote
 from datetime import datetime, timezone
-import argparse, gzip, json, time, os, threading
+import argparse, gzip, json, mimetypes, time, os, threading
 import rail
 import delijn_live
 from mobility_config import load_config
 
-ROOT = Path(__file__).resolve().parent
+SERVER_DIR = Path(__file__).resolve().parent
+ROOT = SERVER_DIR.parent
+SITE = ROOT / 'site'
+# Never serve browser-side key files: in server mode keys stay on the server.
+PRIVATE_SITE_FILES = {'Dashboard-secrets.js'}
 CONFIG = load_config()
 DL_CONFIG = delijn_live.load_config()
 BASE = CONFIG.base
-STATE_DIR = Path(os.environ.get('COMMUTE_STATE_DIR', str(ROOT / 'data')))
+STATE_DIR = Path(os.environ.get('COMMUTE_STATE_DIR', str(SERVER_DIR / 'state')))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 STATE_PATH = STATE_DIR / 'live-state.json'
 QUOTA_PATH = STATE_DIR / 'quota.json'
@@ -263,8 +268,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path in ('/', '/index.html'):
-            html = (ROOT / 'Dashboard.html').read_text()
+            html = (SITE / 'index.html').read_text(encoding='utf-8')
             html = html.replace('window.COMMUTE_SERVER = false;', 'window.COMMUTE_SERVER = true;')
+            html = html.replace('<script src="./Dashboard-secrets.js" onerror="void 0"></script>', '')
             return self.send(html, 'text/html; charset=utf-8')
         if path == '/api/health':
             return self.send(json.dumps({'ok': True, 'app': 'Commute dashboard', 'timezone': 'Europe/Brussels', 'access': public_access()}))
@@ -282,11 +288,26 @@ class Handler(BaseHTTPRequestHandler):
                    ['ARCHITECTURE.md','OPERATIONS.md','TRAIN_PLANNING.md','API.md','API_ACCESS.md','DELIJN_REALTIME.md','VERIFICATION.md']}}
         if path in docs and docs[path].exists():
             return self.send(docs[path].read_text(), 'text/plain; charset=utf-8')
-        if path == '/shuttle.pdf':
-            return self.send((ROOT / 'static' / 'shuttle.pdf').read_bytes(), 'application/pdf', cache='public, max-age=86400')
         if path == '/favicon.svg':
             return self.send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="#184e43"/><rect x="11" y="8" width="18" height="23" rx="4" fill="none" stroke="#d4f3c3" stroke-width="2.5"/><path d="M11 19h18M15 31v3m10-3v3M15 25h1m8 0h1" stroke="#d4f3c3" stroke-width="2.5"/></svg>', 'image/svg+xml')
+        static = self.site_file(path)
+        if static:
+            content_type = mimetypes.guess_type(static.name)[0] or 'application/octet-stream'
+            if content_type.startswith('text/') or content_type.endswith('javascript'):
+                content_type += '; charset=utf-8'
+            return self.send(static.read_bytes(), content_type, cache='no-cache')
         return self.send(json.dumps({'error': 'Not found'}), status=404)
+
+    @staticmethod
+    def site_file(path):
+        """Map a URL path to a file inside site/, refusing traversal and key files."""
+        try:
+            target = (SITE / unquote(path).lstrip("/")).resolve()
+        except (OSError, ValueError):
+            return None
+        if not target.is_relative_to(SITE.resolve()) or not target.is_file() or target.name in PRIVATE_SITE_FILES:
+            return None
+        return target
 
     def do_POST(self):
         if urlsplit(self.path).path != '/api/live/refresh':
